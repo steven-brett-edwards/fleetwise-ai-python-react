@@ -1,0 +1,18 @@
+# Render blueprint for the Python edition.
+#
+# Phase 0: just the API, one service, Docker, free tier, /api/health
+# as the health-check path. The disk mount and all the provider env
+# vars land in Phase 6 once there's actual state worth persisting.
+
+services:
+  - type: web
+    name: fleetwise-py-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
