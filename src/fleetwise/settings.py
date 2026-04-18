@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     app_name: str = "FleetWise AI (Python)"
     environment: str = "development"
 
+    # Async SQLAlchemy URL. Default lands the dev DB next to the repo root;
+    # Render mounts a persistent volume at /app/data and overrides this.
+    database_url: str = "sqlite+aiosqlite:///./fleetwise.db"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

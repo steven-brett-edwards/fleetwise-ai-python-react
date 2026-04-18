@@ -9,6 +9,11 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
+    "sqlalchemy>=2.0.35",
+    "aiosqlite>=0.20.0",
+    # Required by SQLAlchemy's async adapter -- it's an extras dep of
+    # `sqlalchemy[asyncio]` but we pin it explicitly so the closure is obvious.
+    "greenlet>=3.1.0",
 ]
 
 [dependency-groups]
@@ -34,7 +39,36 @@ target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+# A broad but curated rule set:
+#   E/W  pycodestyle errors + warnings
+#   F    pyflakes
+#   I    isort (import ordering)
+#   N    pep8-naming
+#   UP   pyupgrade (3.12+ syntax)
+#   B    bugbear (common gotchas)
+#   SIM  simplify (idiomatic rewrites)
+#   RUF  ruff's own lints
+#   PL   pylint subset
+#
+# Deliberately NOT enabled:
+#   TC (flake8-type-checking) -- we use `from __future__ import annotations`
+#     everywhere, which already eliminates the runtime import cost. TC then
+#     just adds ceremony (`if TYPE_CHECKING: ...`) without any benefit.
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "RUF", "PL"]
+ignore = [
+    "PLR0913",  # too-many-arguments -- FastAPI handlers / repo methods legitimately take many filters
+    "PLR2004",  # magic-value-comparison -- tests and seed data use literal counts intentionally
+    "PLW0603",  # global-statement -- legitimate for the db.py singleton-engine pattern
+]
+
+[tool.ruff.lint.isort]
+# Keep aliased imports (`from sqlalchemy import Enum as SQLEnum`) in the
+# same import group as their siblings instead of splitting them into a
+# separate block. Noisier split otherwise.
+combine-as-imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR0913", "PLR2004", "N802"]  # tests use verbose names + literals freely
 
 [tool.mypy]
 python_version = "3.12"
