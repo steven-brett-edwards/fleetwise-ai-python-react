@@ -79,3 +79,20 @@ files = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+# Explicit source + greenlet/thread concurrency so coverage follows the
+# FastAPI + SQLAlchemy-async + greenlet hops. Without this, async handler
+# bodies executed via the ASGI transport show up as "missed" even though
+# the tests exercise them end-to-end.
+source = ["src/fleetwise"]
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

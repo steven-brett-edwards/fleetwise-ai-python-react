@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     # Render mounts a persistent volume at /app/data and overrides this.
     database_url: str = "sqlite+aiosqlite:///./fleetwise.db"
 
+    # CORS allow-list for the browser clients. Angular dev server defaults
+    # to :4200, Vite to :5173 -- both are in the default so `npm run dev`
+    # Just Works. Production origins come from the Render env var (comma-
+    # separated list; pydantic-settings parses it into `list[str]` via
+    # its built-in JSON/CSV inference on collection-typed fields).
+    cors_allowed_origins: list[str] = [
+        "http://localhost:4200",
+        "http://localhost:5173",
+    ]
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
