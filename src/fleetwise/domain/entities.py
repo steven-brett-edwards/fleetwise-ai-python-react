@@ -40,6 +40,16 @@ class Base(DeclarativeBase):
     """Shared declarative base. One per app, used by `create_all` + Alembic later."""
 
 
+def _enum_values(enum_type: type[StrEnum]) -> list[str]:
+    """Member-value extractor for `values_callable`.
+
+    Pulled out of the `_enum_column` helper (was a lambda) so pyright's
+    strict mode can see that `enum_type` is `type[StrEnum]` and `member.value`
+    is therefore `str`. The lambda form tripped `reportUnknownLambdaType`.
+    """
+    return [member.value for member in enum_type]
+
+
 def _enum_column(enum_type: type[StrEnum]) -> SQLEnum:
     """Store enum values as VARCHAR, not as a native DB enum or SMALLINT.
 
@@ -50,7 +60,7 @@ def _enum_column(enum_type: type[StrEnum]) -> SQLEnum:
     return SQLEnum(
         enum_type,
         native_enum=False,
-        values_callable=lambda e: [m.value for m in e],
+        values_callable=_enum_values,
         length=32,
     )
 
@@ -121,9 +131,12 @@ class MaintenanceSchedule(Base):
         now = datetime.now(UTC).replace(tzinfo=None)
         if self.next_due_date is not None and self.next_due_date < now:
             return True
+        # `self.vehicle` is typed non-optional; call sites eager-load it via
+        # `selectinload` (pyright would flag a `self.vehicle is not None` guard
+        # as unnecessary). If the relationship isn't loaded at the async layer
+        # SQLAlchemy raises MissingGreenlet -- a clearer signal than a silent False.
         return (
             self.next_due_mileage is not None
-            and self.vehicle is not None
             and self.vehicle.current_mileage >= self.next_due_mileage
         )
 
