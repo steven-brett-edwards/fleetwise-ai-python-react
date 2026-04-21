@@ -115,6 +115,30 @@ class FleetSummaryResponse(_WireModel):
     by_department: dict[str, int]
 
 
+class ChatRequest(_WireModel):
+    """Inbound chat payload -- matches the .NET `ChatRequest` shape.
+
+    `conversation_id` is optional: absent on the first turn, the server
+    generates one and returns it; present on follow-ups to thread into
+    the same checkpointer history.
+    """
+
+    message: str
+    conversation_id: str | None = None
+
+
+class ChatResponse(_WireModel):
+    """Outbound chat payload -- matches the .NET `ChatResponse` shape.
+
+    `functions_used` is the deduped list of tool names the agent invoked
+    during this turn, emitted as `FunctionsUsed` on the wire.
+    """
+
+    response: str
+    conversation_id: str
+    functions_used: list[str]
+
+
 class MaintenanceScheduleItemResponse(_WireModel):
     """Projection shape matching MaintenanceController's overdue/upcoming payload.
 
