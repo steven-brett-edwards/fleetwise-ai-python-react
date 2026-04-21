@@ -6,10 +6,12 @@ add database URLs, LLM provider keys, CORS origins, etc.; for Phase 0 we
 keep it minimal so the hello-world deploy has one less thing to go wrong.
 """
 
+import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -28,13 +30,32 @@ class Settings(BaseSettings):
 
     # CORS allow-list for the browser clients. Angular dev server defaults
     # to :4200, Vite to :5173 -- both are in the default so `npm run dev`
-    # Just Works. Production origins come from the Render env var (comma-
-    # separated list; pydantic-settings parses it into `list[str]` via
-    # its built-in JSON/CSV inference on collection-typed fields).
-    cors_allowed_origins: list[str] = [
+    # Just Works. Production origins come from the Render env var as a
+    # comma-separated list; the validator below accepts either CSV (what
+    # humans write in env-var UIs) or JSON (what pydantic-settings would
+    # natively parse for a complex-typed field).
+    cors_allowed_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:4200",
         "http://localhost:5173",
     ]
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _split_csv_origins(cls, raw: object) -> object:
+        """Accept `a,b,c` or `["a","b","c"]` or a real list.
+
+        `NoDecode` on the field disables pydantic-settings' own JSON
+        attempt, so the env source hands us the raw string. We do both
+        formats here: JSON-looking input (starts with `[`) is parsed as
+        JSON; everything else is treated as CSV. Real lists (from the
+        default or init kwargs) pass through unchanged.
+        """
+        if isinstance(raw, str):
+            stripped = raw.lstrip()
+            if stripped.startswith("["):
+                return json.loads(stripped)
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return raw
 
     # --- AI / LangGraph configuration -------------------------------------
     # Flip between Anthropic (hosted demo default), OpenAI (fallback), and
