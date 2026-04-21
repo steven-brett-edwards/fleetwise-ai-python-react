@@ -1,12 +1,14 @@
 """FastAPI app factory.
 
-Startup hook handles two things in order: create tables (`init_db`) and
-seed from JSON dumps if the DB is empty (`seed_if_empty`). Both are
-idempotent, so a warm container restart is a no-op.
+Startup hook handles three things in order: create tables (`init_db`),
+seed from JSON dumps if the DB is empty (`seed_if_empty`), and build
+the LangGraph agent bundle (which transitively opens the Chroma RAG
+store and ingests SOP markdown when embeddings are available). All
+steps are idempotent, so a warm container restart is a no-op.
 
-Routers land under `/api` as each phase adds them. Phase 0 shipped the
-health endpoint; Phase 2 mounts the resource routers (vehicles,
-maintenance, work-orders) and wires CORS for the browser clients.
+Routers land under `/api` as each phase adds them: Phase 0 shipped
+health, Phase 2 mounted vehicles / maintenance / work-orders, Phase 3
+added sync chat, Phase 4 added streaming chat.
 """
 
 from __future__ import annotations

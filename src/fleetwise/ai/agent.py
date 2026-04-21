@@ -42,14 +42,19 @@ import aiosqlite
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
-from fleetwise.ai.prompts import BASE_SYSTEM_PROMPT
+from fleetwise.ai.embeddings import build_embeddings
+from fleetwise.ai.prompts import BASE_SYSTEM_PROMPT, DOCUMENTATION_STANZA
 from fleetwise.ai.providers import build_chat_model
-from fleetwise.ai.tools import ALL_TOOLS
+from fleetwise.ai.rag.ingestion import ingest_if_empty
+from fleetwise.ai.rag.vector_store import build_vector_store
+from fleetwise.ai.tools import LIVE_DATA_TOOLS, document_search_tools
+from fleetwise.ai.tools._retrieval import set_vector_store
 from fleetwise.settings import Settings
 
 
@@ -86,21 +91,23 @@ def build_graph(
     model: BaseChatModel | Runnable[object, BaseMessage],
     *,
     checkpointer: AsyncSqliteSaver,
+    tools: list[BaseTool],
     system_prompt: str = BASE_SYSTEM_PROMPT,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile the two-node StateGraph with the given model + tools bound.
 
     `model` is accepted as either a raw `BaseChatModel` (we'll bind tools
     here) or a pre-bound runnable (tests can hand us a scripted fake
-    whose `bind_tools` already returned `self`). The system prompt is a
-    parameter so Phase 5 can swap in a `BASE_SYSTEM_PROMPT + DOCUMENTATION_STANZA`
-    variant when the RAG tool is active without duplicating this builder.
+    whose `bind_tools` already returned `self`). `tools` and `system_prompt`
+    are explicit parameters so `agent_lifespan` can splice in the RAG tool
+    + documentation stanza only when the vector store is available --
+    never advertise a tool the LLM can't actually dispatch to.
     """
     # `bind_tools` returns a narrower `Runnable` parameterized on the
     # provider's message-input union; widen to `Runnable[object, ...]`
     # so the ternary's two branches land on the same type.
     bound: Runnable[object, BaseMessage] = (
-        model.bind_tools(ALL_TOOLS)  # type: ignore[assignment]
+        model.bind_tools(tools)  # type: ignore[assignment]
         if isinstance(model, BaseChatModel)
         else model
     )
@@ -118,7 +125,7 @@ def build_graph(
         response = await bound.ainvoke(messages)
         return {"messages": [response]}
 
-    tool_node = ToolNode(ALL_TOOLS)
+    tool_node = ToolNode(tools)
 
     graph = StateGraph(MessagesState)
     graph.add_node("agent", agent_node)
@@ -138,22 +145,81 @@ async def agent_lifespan(
     settings: Settings,
     *,
     model: BaseChatModel | Runnable[object, BaseMessage] | None = None,
+    rag_enabled: bool | None = None,
 ) -> AsyncIterator[AgentBundle]:
-    """Own the checkpointer + graph for an app's lifetime.
+    """Own the checkpointer + graph + (optional) vector store for an app's lifetime.
 
     `model` is an override hook for tests -- pass a scripted fake to
-    skip the live provider. Production callers leave it `None` and the
-    provider factory reads `settings.ai_provider`.
+    skip the live provider. `rag_enabled` forces RAG on/off for tests
+    that want to pin the behavior regardless of environment; production
+    callers leave it `None` and let `build_embeddings` probe the config.
+
+    When RAG is active we (a) build the Chroma store and register it in
+    the tool-module retrieval registry so `search_fleet_documentation`
+    can find it, (b) run one-shot ingestion if the collection is empty,
+    (c) bind the RAG tool + append `DOCUMENTATION_STANZA` to the prompt.
+    When RAG is inactive, none of those happen -- the LLM sees exactly
+    the same tool surface it did in Phase 3.
     """
     chat_model: BaseChatModel | Runnable[object, BaseMessage]
     chat_model = model if model is not None else build_chat_model(settings)
+
     async with AsyncExitStack() as stack:
         # aiosqlite.connect accepts a filesystem path; `:memory:` works too
         # (useful in tests that want an ephemeral checkpoint store).
         conn = await stack.enter_async_context(aiosqlite.connect(settings.checkpoint_db_path))
         checkpointer = AsyncSqliteSaver(conn)
-        graph = build_graph(chat_model, checkpointer=checkpointer)
+
+        tools: list[BaseTool] = list(LIVE_DATA_TOOLS)
+        system_prompt = BASE_SYSTEM_PROMPT
+
+        # Decide whether RAG is on. If the caller forced it we honor that
+        # even when embeddings come back None; production paths go through
+        # the auto-probe and cleanly degrade when no embedding backend is
+        # reachable.
+        should_enable_rag = rag_enabled if rag_enabled is not None else _rag_available(settings)
+
+        if should_enable_rag:
+            embeddings = build_embeddings(settings)
+            if embeddings is not None:
+                vector_store = build_vector_store(embeddings, settings)
+                await ingest_if_empty(vector_store, settings.documents_dir)
+                set_vector_store(vector_store)
+                # Tear the registry down on shutdown so tests starting a
+                # fresh app don't inherit a stale store from a previous run.
+                stack.push_async_callback(_clear_vector_store)
+                tools = [*tools, *document_search_tools]
+                system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{DOCUMENTATION_STANZA}"
+
+        graph = build_graph(
+            chat_model,
+            checkpointer=checkpointer,
+            tools=tools,
+            system_prompt=system_prompt,
+        )
         yield AgentBundle(graph=graph, checkpointer=checkpointer)
+
+
+def _rag_available(settings: Settings) -> bool:
+    """Cheap probe: would `build_embeddings` return a usable provider?
+
+    We don't actually call the factory here because that would instantiate
+    a live client; just check the same preconditions the factory checks.
+    """
+    provider = settings.embedding_provider
+    if provider == "disabled":
+        return False
+    if provider == "openai":
+        return bool(settings.openai_api_key)
+    if provider == "ollama":
+        return True  # no key to probe; let first embed() fail loudly if unreachable
+    # `auto`: prefer openai, else ollama.
+    return bool(settings.openai_api_key) or True
+
+
+async def _clear_vector_store() -> None:
+    """AsyncExitStack callback to reset the tool retrieval registry."""
+    set_vector_store(None)
 
 
 def extract_functions_used(messages: Iterable[BaseMessage]) -> list[str]:

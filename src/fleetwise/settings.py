@@ -62,6 +62,25 @@ class Settings(BaseSettings):
     # uses (e.g. `/app/data/checkpoints.db`).
     checkpoint_db_path: str = "./checkpoints.db"
 
+    # --- RAG (Phase 5) ----------------------------------------------------
+    # Directory of markdown SOP documents to ingest on startup. Five files
+    # ported verbatim from the .NET `data/documents/` tree.
+    documents_dir: str = "./data/documents"
+
+    # Where Chroma writes its SQLite + hnsw index. On Render this points
+    # inside the same volume as the fleet DB and checkpoint store, so the
+    # collection survives restarts and ingestion becomes a one-shot cost.
+    chroma_persist_dir: str = "./data/chroma"
+    chroma_collection_name: str = "fleet-documents"
+
+    # Embedding model + provider. Anthropic has no embeddings endpoint, so
+    # the chat provider and embedding provider are configured independently.
+    # `auto` picks openai if an OPENAI_API_KEY is set, else ollama, else
+    # disables RAG (the agent won't advertise `search_fleet_documentation`).
+    embedding_provider: Literal["auto", "openai", "ollama", "disabled"] = "auto"
+    openai_embedding_model: str = "text-embedding-3-small"
+    ollama_embedding_model: str = "nomic-embed-text"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
