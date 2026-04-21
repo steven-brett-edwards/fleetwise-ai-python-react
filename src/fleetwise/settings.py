@@ -7,6 +7,7 @@ keep it minimal so the hello-world deploy has one less thing to go wrong.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,6 +35,32 @@ class Settings(BaseSettings):
         "http://localhost:4200",
         "http://localhost:5173",
     ]
+
+    # --- AI / LangGraph configuration -------------------------------------
+    # Flip between Anthropic (hosted demo default), OpenAI (fallback), and
+    # Ollama (local-first, no API key). The factory in `ai.providers`
+    # matches on this literal.
+    ai_provider: Literal["anthropic", "openai", "ollama"] = "anthropic"
+
+    # Anthropic (default for the hosted demo).
+    anthropic_api_key: str | None = None
+    anthropic_chat_model: str = "claude-sonnet-4-5"
+
+    # OpenAI — used as a chat fallback, and as the embedding provider in
+    # Phase 5 even when chat is Anthropic (Anthropic has no embeddings API).
+    openai_api_key: str | None = None
+    openai_chat_model: str = "gpt-4o-mini"
+
+    # Ollama — local, free, no key. Default endpoint matches the out-of-box
+    # `ollama serve` listener.
+    ollama_endpoint: str = "http://localhost:11434"
+    ollama_chat_model: str = "llama3.2"
+
+    # LangGraph checkpointer DB. Persistent conversation history across
+    # restarts -- a free upgrade over the .NET `ConcurrentDictionary`. On
+    # Render this points at the same volume-mounted directory the fleet DB
+    # uses (e.g. `/app/data/checkpoints.db`).
+    checkpoint_db_path: str = "./checkpoints.db"
 
 
 @lru_cache(maxsize=1)
