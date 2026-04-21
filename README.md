@@ -79,18 +79,16 @@ The full plan lives in [`docs/migration-plan.md`](./docs/migration-plan.md). Ten
 5. **One config source.** Environment variables via Pydantic Settings; `.env.example` documents every knob.
 6. **Deploy on day one.** Hello-world deploys to Render at the end of Phase 0 before any domain code exists.
 
-## Chatham Financial alignment
-
-This plan was tuned to [Chatham Financial's Full Stack Engineer JD](https://www.chathamfinancial.com/careers). Line-by-line alignment lives in [`docs/migration-plan.md`](./docs/migration-plan.md); the highlights:
+## Highlights
 
 - **Production Python** — FastAPI async, Pydantic v2, SQLAlchemy 2.x async.
 - **Clean architecture** — `domain / data / api / ai` separation with typed repositories.
 - **React frontend** — Phase 9 ships a React + TypeScript + Vite app consuming the same API.
 - **LLM-powered apps: agent orchestration, tool use, RAG** — LangGraph StateGraph, 13 tools across 4 areas, Chroma-backed RAG over fleet SOPs.
-- **Understanding of LLM reliability** — persistent checkpoints, error-resilient streaming, SSE framing fix, conditional tool advertisement.
+- **LLM reliability** — persistent checkpoints, error-resilient streaming, SSE framing fix, conditional tool advertisement.
 - **Cloud platforms** — Render primary + AWS appendix (ECS Fargate + RDS + Bedrock option).
 - **Data pipelines / unstructured data** — Optional Phase 10 ETL ingests messy inspection CSVs with LLM-driven header mapping.
-- **Owning features end-to-end** — every phase is a complete deliverable with its own tests, commit, and verification step.
+- **End-to-end ownership** — every phase is a complete deliverable with its own tests, commit, and verification step.
 
 ## Status
 

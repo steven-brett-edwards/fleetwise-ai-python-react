@@ -1,15 +1,34 @@
-"""LangGraph agent wiring -- Phase 3's prebuilt ReAct path.
+"""LangGraph agent wiring -- Phase 4's hand-rolled StateGraph path.
 
-The agent is built once per app lifecycle and stashed on `app.state` by
-the lifespan hook. Requests reuse it and scope their turn to a
-`thread_id` (the chat's `conversation_id`) so the `AsyncSqliteSaver`
-checkpointer partitions history per conversation and survives restarts --
-the free upgrade over the .NET `ConcurrentDictionary<string, ChatHistory>`
-flagged in the migration plan.
+Phase 3 used `langgraph.prebuilt.create_react_agent` to de-risk the
+tool-calling loop. Phase 4 replaces that with an explicit two-node
+`StateGraph` so (a) the flow is readable as a diagram, not hidden
+behind a helper, and (b) we can splice in the conditional documentation
+stanza the .NET PR #14 lesson demands when RAG lands in Phase 5 -- never
+advertise `search_fleet_documentation` to the LLM unless the tool is
+actually bound.
 
-Phase 4 will replace `create_react_agent` with a hand-rolled `StateGraph`
-that branches on `settings.rag_enabled` for the documentation stanza.
-Until then this is the shortest path to a working tool-calling loop.
+Shape:
+
+        START
+          │
+          ▼
+    ┌──────────┐   no tool_calls   ┌─────┐
+    │  agent   │──────────────────▶│ END │
+    └──────────┘                   └─────┘
+        ▲  │ has tool_calls
+        │  ▼
+    ┌──────────┐
+    │  tools   │
+    └──────────┘
+
+`agent_node` is the LLM call (tools bound); `tool_node` is LangGraph's
+prebuilt `ToolNode` which dispatches `AIMessage.tool_calls` to the
+registered tools. The conditional edge inspects the last `AIMessage`;
+loop until the LLM emits an answer without tool calls.
+
+The checkpointer lives on the compiled graph, same as Phase 3, so
+conversations still survive restarts.
 """
 
 from __future__ import annotations
@@ -17,13 +36,16 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
+from typing import Literal
 
 import aiosqlite
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import Runnable
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import ToolNode
 
 from fleetwise.ai.prompts import BASE_SYSTEM_PROMPT
 from fleetwise.ai.providers import build_chat_model
@@ -41,35 +63,96 @@ class AgentBundle:
     """
 
     # `CompiledStateGraph` is generic; we don't constrain the state type
-    # here since we're using the prebuilt ReAct schema in Phase 3.
+    # here -- `MessagesState` is the only schema we use, but the generic
+    # parameter churns between LangGraph versions.
     graph: CompiledStateGraph  # type: ignore[type-arg]
     checkpointer: AsyncSqliteSaver
+
+
+def _should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
+    """Conditional edge: loop to tools if the LLM requested any, else end.
+
+    LangGraph names the terminal sentinel `__end__`; `END` re-exports
+    that constant, but the return-type annotation has to be the literal
+    string for the graph compiler to accept the function as an edge.
+    """
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+    return "__end__"
+
+
+def build_graph(
+    model: BaseChatModel | Runnable[object, BaseMessage],
+    *,
+    checkpointer: AsyncSqliteSaver,
+    system_prompt: str = BASE_SYSTEM_PROMPT,
+) -> CompiledStateGraph:  # type: ignore[type-arg]
+    """Compile the two-node StateGraph with the given model + tools bound.
+
+    `model` is accepted as either a raw `BaseChatModel` (we'll bind tools
+    here) or a pre-bound runnable (tests can hand us a scripted fake
+    whose `bind_tools` already returned `self`). The system prompt is a
+    parameter so Phase 5 can swap in a `BASE_SYSTEM_PROMPT + DOCUMENTATION_STANZA`
+    variant when the RAG tool is active without duplicating this builder.
+    """
+    # `bind_tools` returns a narrower `Runnable` parameterized on the
+    # provider's message-input union; widen to `Runnable[object, ...]`
+    # so the ternary's two branches land on the same type.
+    bound: Runnable[object, BaseMessage] = (
+        model.bind_tools(ALL_TOOLS)  # type: ignore[assignment]
+        if isinstance(model, BaseChatModel)
+        else model
+    )
+
+    async def agent_node(state: MessagesState) -> dict[str, list[BaseMessage]]:
+        """LLM call. Prepend the system prompt if it's not already there.
+
+        The system prompt is injected on the first turn only -- subsequent
+        turns replay history from the checkpointer, which already carries
+        the prior system message.
+        """
+        messages = state["messages"]
+        if not messages or not isinstance(messages[0], SystemMessage):
+            messages = [SystemMessage(content=system_prompt), *messages]
+        response = await bound.ainvoke(messages)
+        return {"messages": [response]}
+
+    tool_node = ToolNode(ALL_TOOLS)
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", tool_node)
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges(
+        "agent",
+        _should_continue,
+        {"tools": "tools", "__end__": END},
+    )
+    graph.add_edge("tools", "agent")
+    return graph.compile(checkpointer=checkpointer)
 
 
 @asynccontextmanager
 async def agent_lifespan(
     settings: Settings,
     *,
-    model: BaseChatModel | None = None,
+    model: BaseChatModel | Runnable[object, BaseMessage] | None = None,
 ) -> AsyncIterator[AgentBundle]:
     """Own the checkpointer + graph for an app's lifetime.
 
-    `model` is an override hook for tests -- pass a `FakeListChatModel`
-    to skip the live provider. Production callers leave it `None` and
-    the provider factory reads `settings.ai_provider`.
+    `model` is an override hook for tests -- pass a scripted fake to
+    skip the live provider. Production callers leave it `None` and the
+    provider factory reads `settings.ai_provider`.
     """
+    chat_model: BaseChatModel | Runnable[object, BaseMessage]
     chat_model = model if model is not None else build_chat_model(settings)
     async with AsyncExitStack() as stack:
         # aiosqlite.connect accepts a filesystem path; `:memory:` works too
         # (useful in tests that want an ephemeral checkpoint store).
         conn = await stack.enter_async_context(aiosqlite.connect(settings.checkpoint_db_path))
         checkpointer = AsyncSqliteSaver(conn)
-        graph = create_react_agent(
-            chat_model,
-            tools=ALL_TOOLS,
-            checkpointer=checkpointer,
-            prompt=BASE_SYSTEM_PROMPT,
-        )
+        graph = build_graph(chat_model, checkpointer=checkpointer)
         yield AgentBundle(graph=graph, checkpointer=checkpointer)
 
 
