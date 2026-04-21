@@ -1,9 +1,18 @@
 # Render blueprint for the Python edition.
 #
-# Phase 6: one web service, a 1 GB disk mounted at /app/data covering the
-# fleet DB + Chroma collection + LangGraph checkpoint store, and every env
-# var wired up. Secrets (`sync: false`) are pasted in the Render dashboard
-# at blueprint-apply time -- they never land in the repo.
+# Free-tier constraint: persistent disks are a paid feature. We ship
+# without one -- state is rebuilt on each cold boot:
+#
+#   - Fleet DB: `seed_if_empty` re-populates the 35-vehicle corpus from
+#     the JSON dumps baked into the image. ~1 second.
+#   - Chroma: ingestion re-chunks + re-embeds the 5 SOP markdown files.
+#     Fractions of a cent on OpenAI embeddings per boot.
+#   - LangGraph checkpoints: conversations don't survive restart. Same
+#     ergonomics as the .NET edition's `ConcurrentDictionary`.
+#
+# Upgrading to Starter ($7/mo) restores persistence with a one-line add:
+# a `disk:` block mounting /app/data and pointing the three DATABASE_URL
+# / CHECKPOINT_DB_PATH / CHROMA_PERSIST_DIR paths there.
 
 services:
   - type: web
@@ -15,29 +24,21 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
 
-    # One disk, three tenants. All three state stores survive restarts so
-    # the free tier's idle -> wake cycle is instant to first useful answer
-    # (no re-ingestion, no lost conversations).
-    disk:
-      name: fleetwise-data
-      mountPath: /app/data
-      sizeGB: 1
-
     envVars:
       - key: ENVIRONMENT
         value: production
 
-      # --- Data stores (all on the mounted disk) ------------------------
+      # --- Data stores (ephemeral, in-container) ------------------------
+      # Writable paths inside the container. They vanish on restart; the
+      # startup hooks rebuild them idempotently.
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:////app/data/fleetwise.db
+        value: sqlite+aiosqlite:////tmp/fleetwise.db
       - key: CHECKPOINT_DB_PATH
-        value: /app/data/checkpoints.db
+        value: /tmp/checkpoints.db
       - key: CHROMA_PERSIST_DIR
-        value: /app/data/chroma
+        value: /tmp/chroma
 
-      # SOP markdown corpus. Lives in the image, outside /app/data, so
-      # the volume mount doesn't shadow it. Ingestion on first boot copies
-      # the chunks into Chroma at /app/data/chroma (persistent).
+      # SOP markdown corpus ships in the image.
       - key: DOCUMENTS_DIR
         value: /app/documents
 
