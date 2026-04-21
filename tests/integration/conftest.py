@@ -134,7 +134,11 @@ async def chat_app(engine: AsyncEngine) -> AsyncIterator[FastAPI]:
 
     settings = get_settings()
     settings_copy = settings.model_copy(update={"checkpoint_db_path": ":memory:"})
-    async with agent_lifespan(settings_copy, model=scripted_fleet_summary_model()) as agent:
+    async with agent_lifespan(
+        settings_copy,
+        model=scripted_fleet_summary_model(),
+        rag_enabled=False,  # keep this fixture hermetic; RAG has its own tests
+    ) as agent:
         app.state.agent = agent
         yield app
 

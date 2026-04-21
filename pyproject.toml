@@ -20,6 +20,11 @@ dependencies = [
     "langchain-anthropic>=0.3.0",
     "langchain-openai>=0.2.0",
     "langchain-ollama>=0.2.0",
+    # RAG (Phase 5). `langchain-chroma` wraps chromadb's client as a LangChain
+    # VectorStore; `chromadb` is the actual persistent store that lands on
+    # Render's mounted volume.
+    "langchain-chroma>=0.1.4",
+    "chromadb>=0.5.0",
 ]
 
 [dependency-groups]
