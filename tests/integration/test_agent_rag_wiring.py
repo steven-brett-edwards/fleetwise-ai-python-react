@@ -27,7 +27,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from fleetwise.ai import embeddings as embeddings_module
+from fleetwise.ai import agent as agent_module
 from fleetwise.ai.agent import agent_lifespan
 from fleetwise.ai.tools._retrieval import get_vector_store
 from fleetwise.data.db import get_session
@@ -76,7 +76,10 @@ async def rag_chat_client(
     engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[AsyncClient]:
     # Sidestep the real embedding-provider factory -- no network calls.
-    monkeypatch.setattr(embeddings_module, "build_embeddings", lambda _s: _FakeEmbeddings())
+    # Patch the name `agent.py` actually resolves -- it imported the symbol
+    # with `from ... import build_embeddings`, so patching the source module
+    # doesn't rebind the reference inside the lifespan.
+    monkeypatch.setattr(agent_module, "build_embeddings", lambda _s: _FakeEmbeddings())
 
     with TemporaryDirectory() as chroma_dir, TemporaryDirectory() as docs_dir:
         # Seed the temp corpus so ingestion has something to chunk.
