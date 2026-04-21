@@ -4,6 +4,65 @@
 
 **Sister project:** the original .NET + Angular edition lives at [`steven-brett-edwards/fleetwise-ai`](https://github.com/steven-brett-edwards/fleetwise-ai) and is deployed at [fleetwise-frontend.onrender.com](https://fleetwise-frontend.onrender.com). This repo ports the same app to a Python/LangGraph/React stack — same domain, same tool-use surface, same SOP documents, different ecosystem.
 
+## Live demo
+
+API is up at **https://fleetwise-py-api.onrender.com** on Render's free tier. First request after idle is slow (container cold-start + one-shot Chroma ingestion); subsequent requests are fast.
+
+```bash
+API=https://fleetwise-py-api.onrender.com
+curl -sS "$API/api/health"
+# → {"status":"ok"}
+```
+
+**Sync chat — tool dispatch over live fleet data.**
+
+```bash
+curl -sS -X POST "$API/api/chat" -H 'Content-Type: application/json' \
+  -d '{"Message": "Which vehicles are in the Public Works department?"}'
+```
+
+```json
+{
+  "Response": "Here is the list of vehicles in the Public Works department: ...12 vehicles formatted as a table...",
+  "ConversationId": "c4be51ce-3681-4b9f-94ef-a00538329958",
+  "FunctionsUsed": ["search_vehicles"]
+}
+```
+
+**Streaming chat — SSE with named events.** `tool` frames announce tool dispatch, `token` frames stream model output (newlines escaped on the wire — the .NET SSE bug fix), `done` frame terminates.
+
+```text
+event: tool
+data: get_fleet_summary
+
+event: token
+data: Here's
+
+event: token
+data:  a
+
+event: token
+data:  summary ...
+
+event: done
+data: [DONE]
+```
+
+**RAG — grounded in the ingested SOP corpus.**
+
+```bash
+curl -sS -X POST "$API/api/chat" -H 'Content-Type: application/json' \
+  -d '{"Message": "What is the anti-idling policy?"}'
+```
+
+```json
+{
+  "Response": "The anti-idling policy states that fleet vehicles must not idle for more than 3 consecutive minutes unless specific conditions apply...",
+  "ConversationId": "a57879ba-...",
+  "FunctionsUsed": ["search_fleet_documentation"]
+}
+```
+
 ## Why two editions?
 
 The original is C# / Angular / Semantic Kernel / OpenAI. This one is Python / React / LangGraph / Anthropic. Shipping the same product twice demonstrates that the interesting work — domain modeling, tool design, RAG, streaming UX, deployment — was deliberate, not accidentally tied to one stack. It also gives the Python edition room to fix three things the .NET version has as rough edges:
@@ -92,7 +151,7 @@ The full plan lives in [`docs/migration-plan.md`](./docs/migration-plan.md). Ten
 
 ## Status
 
-Active development. Nothing is live yet.
+Backend live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com). React frontend pending (Phase 9).
 
 - [x] Phase 0 — Scaffold + Render hello-world
 - [x] Phase 1 — Domain + data + seed
@@ -100,7 +159,7 @@ Active development. Nothing is live yet.
 - [x] Phase 3 — LangGraph prebuilt agent
 - [x] Phase 4 — Custom StateGraph + SSE streaming
 - [x] Phase 5 — RAG pipeline
-- [ ] Phase 6 — Render deploy finalization
+- [x] Phase 6 — Render deploy finalization
 - [ ] Phase 7 — Tests + CI
 - [ ] Phase 8 — README polish
 - [ ] Phase 9 — React frontend
@@ -108,20 +167,31 @@ Active development. Nothing is live yet.
 
 ## Running locally
 
-> Phase 0 scaffold only — everything below is a hello-world at the moment.
-
 ### Prerequisites
 
 - [Python 3.12](https://www.python.org/downloads/)
 - [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- An API key for at least one LLM provider. The chat provider and embedding provider are configured independently — Anthropic has no embeddings endpoint, so RAG needs OpenAI or Ollama even when chat is Anthropic.
 
 ### Backend
 
 ```bash
 uv sync
+cp .env.example .env   # fill in ANTHROPIC_API_KEY (or AI_PROVIDER=openai + OPENAI_API_KEY)
 uv run uvicorn fleetwise.main:app --reload --port 5100
-curl http://localhost:5100/api/health
-# → {"status":"ok"}
+
+curl -sS http://localhost:5100/api/vehicles/summary                 # REST
+curl -sS -X POST http://localhost:5100/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"Message": "Summarize the fleet."}'                          # chat
+```
+
+Tests:
+
+```bash
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src/
+uv run pytest --cov=fleetwise --cov-report=term-missing
 ```
 
 ### Frontend
