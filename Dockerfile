@@ -22,6 +22,10 @@ COPY README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Static content: SOP markdown corpus for RAG ingestion. Lives outside
+# /app/data so the Render disk mount at /app/data doesn't shadow it.
+COPY data/documents ./documents
+
 
 FROM python:3.12-slim-bookworm AS runtime
 

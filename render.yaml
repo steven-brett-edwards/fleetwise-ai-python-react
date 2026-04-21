@@ -1,8 +1,9 @@
 # Render blueprint for the Python edition.
 #
-# Phase 0: just the API, one service, Docker, free tier, /api/health
-# as the health-check path. The disk mount and all the provider env
-# vars land in Phase 6 once there's actual state worth persisting.
+# Phase 6: one web service, a 1 GB disk mounted at /app/data covering the
+# fleet DB + Chroma collection + LangGraph checkpoint store, and every env
+# var wired up. Secrets (`sync: false`) are pasted in the Render dashboard
+# at blueprint-apply time -- they never land in the repo.
 
 services:
   - type: web
@@ -13,6 +14,56 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
+
+    # One disk, three tenants. All three state stores survive restarts so
+    # the free tier's idle -> wake cycle is instant to first useful answer
+    # (no re-ingestion, no lost conversations).
+    disk:
+      name: fleetwise-data
+      mountPath: /app/data
+      sizeGB: 1
+
     envVars:
       - key: ENVIRONMENT
         value: production
+
+      # --- Data stores (all on the mounted disk) ------------------------
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////app/data/fleetwise.db
+      - key: CHECKPOINT_DB_PATH
+        value: /app/data/checkpoints.db
+      - key: CHROMA_PERSIST_DIR
+        value: /app/data/chroma
+
+      # SOP markdown corpus. Lives in the image, outside /app/data, so
+      # the volume mount doesn't shadow it. Ingestion on first boot copies
+      # the chunks into Chroma at /app/data/chroma (persistent).
+      - key: DOCUMENTS_DIR
+        value: /app/documents
+
+      # --- AI providers -------------------------------------------------
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: ANTHROPIC_CHAT_MODEL
+        value: claude-sonnet-4-5
+      - key: ANTHROPIC_API_KEY
+        sync: false                    # dashboard-prompted secret
+
+      # OpenAI is the embedding source even when chat is Anthropic (Anthropic
+      # has no embeddings endpoint). Leaving this unset falls back to Ollama,
+      # which isn't reachable from Render's free tier -- so the demo needs
+      # an OPENAI_API_KEY for RAG to light up.
+      - key: EMBEDDING_PROVIDER
+        value: auto
+      - key: OPENAI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: OPENAI_API_KEY
+        sync: false                    # dashboard-prompted secret
+
+      # --- CORS ---------------------------------------------------------
+      # The React frontend (Phase 9) gets served from the same origin via
+      # FastAPI `StaticFiles`, so strictly speaking CORS only matters for
+      # the Angular frontend pointed at this backend. Keep localhost dev
+      # origins in the list so the frontends can hit prod during dev work.
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:4200,http://localhost:5173
