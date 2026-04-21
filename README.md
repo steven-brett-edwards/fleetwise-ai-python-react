@@ -94,12 +94,12 @@ The full plan lives in [`docs/migration-plan.md`](./docs/migration-plan.md). Ten
 
 Active development. Nothing is live yet.
 
-- [ ] Phase 0 — Scaffold + Render hello-world
-- [ ] Phase 1 — Domain + data + seed
-- [ ] Phase 2 — REST API parity
-- [ ] Phase 3 — LangGraph prebuilt agent
-- [ ] Phase 4 — Custom StateGraph + SSE streaming
-- [ ] Phase 5 — RAG pipeline
+- [x] Phase 0 — Scaffold + Render hello-world
+- [x] Phase 1 — Domain + data + seed
+- [x] Phase 2 — REST API parity
+- [x] Phase 3 — LangGraph prebuilt agent
+- [x] Phase 4 — Custom StateGraph + SSE streaming
+- [x] Phase 5 — RAG pipeline
 - [ ] Phase 6 — Render deploy finalization
 - [ ] Phase 7 — Tests + CI
 - [ ] Phase 8 — README polish
