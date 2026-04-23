@@ -44,4 +44,25 @@ describe('streamChat', () => {
       { type: 'done' },
     ])
   })
+
+  it('preserves leading spaces inside token frames (no word-glue)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeStreamResponse([
+        'event: token\ndata: Public\n\n',
+        'event: token\ndata:  Works\n\n',
+        'event: token\ndata:  has\n\n',
+        'event: done\ndata: [DONE]\n\n',
+      ]),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: StreamEvent[] = []
+    await streamChat({ message: 'hi', onEvent: (e) => events.push(e) })
+
+    const combined = events
+      .filter((e): e is { type: 'token'; text: string } => e.type === 'token')
+      .map((e) => e.text)
+      .join('')
+    expect(combined).toBe('Public Works has')
+  })
 })

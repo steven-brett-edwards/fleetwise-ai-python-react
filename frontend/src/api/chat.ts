@@ -72,7 +72,10 @@ function parseFrame(frame: string): StreamEvent | null {
     if (line.startsWith('event:')) {
       eventName = line.slice(6).trim()
     } else if (line.startsWith('data:')) {
-      data += line.slice(5).trimStart()
+      // SSE spec: strip exactly one optional leading space after `data:`.
+      // Using `.trimStart()` here (earlier bug) collapsed token whitespace
+      // so words rendered glued together ("PublicWorkshasthe...").
+      data += line.startsWith('data: ') ? line.slice(6) : line.slice(5)
     }
   }
   if (eventName === 'token') return { type: 'token', text: unescapeSse(data) }

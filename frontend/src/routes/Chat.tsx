@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Send, Sparkles, Wrench } from 'lucide-react'
 import clsx from 'clsx'
 import { streamChat, type StreamEvent } from '../api/chat'
+import Markdown from '../components/Markdown'
 
 interface Message {
   id: number
@@ -156,15 +157,19 @@ function Bubble({ message }: { message: Message }) {
         ) : null}
         <div
           className={clsx(
-            'rounded-lg px-4 py-2 text-sm whitespace-pre-wrap',
+            'rounded-lg px-4 py-2 text-sm',
             isUser
-              ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)]'
+              ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)] whitespace-pre-wrap'
               : 'bg-[var(--color-surface)] border border-[var(--color-accent)]/30 text-[var(--color-text)]',
           )}
         >
-          {message.text || (message.role === 'assistant' && !message.error ? (
+          {isUser ? (
+            message.text
+          ) : message.text ? (
+            <Markdown source={message.text} />
+          ) : !message.error ? (
             <span className="text-[var(--color-text-muted)] italic">Thinking…</span>
-          ) : null)}
+          ) : null}
           {message.error ? (
             <div className="text-[var(--color-danger)] text-xs mt-2">Error: {message.error}</div>
           ) : null}
