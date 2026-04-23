@@ -43,8 +43,14 @@ services:
         value: /app/documents
 
       # --- AI providers -------------------------------------------------
+      # Default to OpenAI for the hosted demo since we only have an
+      # OPENAI_API_KEY on file. Anthropic is still wired up in code; set
+      # AI_PROVIDER=anthropic + paste ANTHROPIC_API_KEY in the dashboard
+      # to switch. Keeping AI_PROVIDER as a synced value means a fresh
+      # blueprint deploy doesn't silently re-pin to a provider we can't
+      # authenticate against (which is how the Phase-9 redeploy broke).
       - key: AI_PROVIDER
-        value: anthropic
+        value: openai
       - key: ANTHROPIC_CHAT_MODEL
         value: claude-sonnet-4-5
       - key: ANTHROPIC_API_KEY
