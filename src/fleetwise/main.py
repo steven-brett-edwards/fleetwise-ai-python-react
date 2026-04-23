@@ -15,9 +15,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from fleetwise.ai.agent import agent_lifespan
 from fleetwise.api import (
@@ -73,7 +76,57 @@ def create_app() -> FastAPI:
     app.include_router(work_orders_api.router, prefix="/api")
     app.include_router(chat_api.router, prefix="/api")
 
+    _mount_frontend(app)
+
     return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve the React SPA built into `frontend/dist` when present.
+
+    In prod the Docker image bakes the Vite build into
+    `/app/frontend/dist`; in dev the folder is absent and this function
+    becomes a no-op so `uvicorn --reload` works without a frontend build.
+    An SPA fallback route serves `index.html` for any unmatched GET that
+    doesn't collide with `/api/*`, letting React Router own client-side
+    routing.
+    """
+    # `main.py` is `src/fleetwise/main.py`; walk up to the repo root, then
+    # resolve `frontend/dist`. Override via FRONTEND_DIST_DIR for containers
+    # that bake the build into a non-standard path.
+    settings = get_settings()
+    dist_dir = settings.frontend_dist_dir or (
+        Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    )
+    if not dist_dir.is_dir():
+        return
+
+    # StaticFiles at a sub-path handles hashed asset files; the catch-all
+    # below handles the root index.html and any client-routed URL.
+    app.mount(
+        "/assets",
+        StaticFiles(directory=dist_dir / "assets"),
+        name="spa-assets",
+    )
+
+    index_file = dist_dir / "index.html"
+
+    @app.get("/", include_in_schema=False)
+    async def spa_index() -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+        return FileResponse(index_file)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str, request: Request) -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+        # Never shadow /api; FastAPI's routing runs /api routes before this
+        # catch-all, but if nothing matched we don't want to serve index.html
+        # in place of a genuine 404 on an API route.
+        if full_path.startswith("api/") or request.url.path.startswith("/api"):
+            raise HTTPException(status_code=404)
+        # Let real files under dist (e.g. favicon.ico) serve directly.
+        candidate = dist_dir / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index_file)
 
 
 app = create_app()

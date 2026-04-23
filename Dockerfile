@@ -1,8 +1,27 @@
-# Multi-stage build: copy `uv` from its official image, resolve deps in a
-# builder stage, then ship a slim runtime with only the virtualenv + app.
-# `uv sync --frozen --no-dev` pins the production closure from uv.lock so
-# the image is reproducible and dev-only tools (ruff, mypy, pytest) stay
-# out of production.
+# Multi-stage build.
+#
+# Stage 1 (`frontend`): build the React SPA with Node. Output is a static
+# bundle in `/frontend/dist` copied into the final image so FastAPI can
+# serve it via StaticFiles on the same origin as the API (no prod CORS,
+# one Render service, no split deploy to wire up).
+#
+# Stage 2 (`builder`): resolve Python deps with `uv sync --frozen` so the
+# image is reproducible from uv.lock, then copy the app source.
+#
+# Stage 3 (`runtime`): slim Python image with just the venv + app + built
+# frontend. Dev tools (ruff, mypy, pytest, Node) stay out of production.
+
+FROM node:20-alpine AS frontend
+
+WORKDIR /frontend
+
+# Install deps first (cached layer) before copying source.
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
 
 FROM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
@@ -12,7 +31,6 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install deps first (cached layer) before copying source.
 COPY pyproject.toml uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
@@ -35,6 +53,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 WORKDIR /app
 COPY --from=builder /app /app
+COPY --from=frontend /frontend/dist /app/frontend/dist
 
 # Render injects $PORT; default to 8080 locally.
 EXPOSE 8080

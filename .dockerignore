@@ -1,0 +1,32 @@
+# Keep build context lean. The Dockerfile's multi-stage frontend job runs
+# `npm ci && npm run build` inside the image, so we never need to ship
+# local node_modules or a prebuilt dist from the host.
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.venv/
+venv/
+
+.env
+.env.*.local
+
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# Frontend host artifacts -- rebuilt inside the image
+frontend/node_modules/
+frontend/dist/
+
+# Local state
+*.db
+*.db-shm
+*.db-wal
+data/chroma/
