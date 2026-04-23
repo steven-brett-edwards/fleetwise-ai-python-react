@@ -8,6 +8,7 @@ keep it minimal so the hello-world deploy has one less thing to go wrong.
 
 import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import field_validator
@@ -101,6 +102,14 @@ class Settings(BaseSettings):
     embedding_provider: Literal["auto", "openai", "ollama", "disabled"] = "auto"
     openai_embedding_model: str = "text-embedding-3-small"
     ollama_embedding_model: str = "nomic-embed-text"
+
+    # --- Frontend (Phase 9) -----------------------------------------------
+    # Absolute path to the built React SPA (`frontend/dist`). When unset,
+    # `main._mount_frontend` walks up from the source tree to find the
+    # dev-build location. In Docker the image bakes the build into
+    # `/app/frontend/dist` and this env var points there explicitly so the
+    # resolution doesn't depend on cwd.
+    frontend_dist_dir: Path | None = None
 
 
 @lru_cache(maxsize=1)
