@@ -6,6 +6,9 @@ import './index.css'
 import App from './App'
 import Dashboard from './routes/Dashboard'
 import Vehicles from './routes/Vehicles'
+import VehicleDetail from './routes/VehicleDetail'
+import WorkOrders from './routes/WorkOrders'
+import WorkOrderDetail from './routes/WorkOrderDetail'
 import Chat from './routes/Chat'
 
 const queryClient = new QueryClient({
@@ -25,6 +28,9 @@ createRoot(document.getElementById('root')!).render(
           <Route element={<App />}>
             <Route index element={<Dashboard />} />
             <Route path="vehicles" element={<Vehicles />} />
+            <Route path="vehicles/:id" element={<VehicleDetail />} />
+            <Route path="work-orders" element={<WorkOrders />} />
+            <Route path="work-orders/:id" element={<WorkOrderDetail />} />
             <Route path="chat" element={<Chat />} />
           </Route>
         </Routes>

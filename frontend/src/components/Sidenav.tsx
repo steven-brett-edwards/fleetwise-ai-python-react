@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Truck,
   MessageSquare,
-  Wrench,
   ClipboardList,
   Zap,
 } from 'lucide-react'
@@ -30,20 +29,6 @@ function Item({ to, icon: Icon, label }: { to: string; icon: LucideIcon; label: 
   )
 }
 
-function Disabled({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-600 cursor-not-allowed">
-      <div className="flex items-center gap-3">
-        <Icon className="h-4 w-4" />
-        <span>{label}</span>
-      </div>
-      <span className="text-[10px] uppercase tracking-wider rounded bg-gray-800 text-gray-400 px-1.5 py-0.5">
-        soon
-      </span>
-    </div>
-  )
-}
-
 export default function Sidenav() {
   return (
     <aside className="sticky top-0 h-screen w-56 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 flex flex-col gap-6">
@@ -57,9 +42,8 @@ export default function Sidenav() {
       <nav className="flex flex-col gap-1">
         <Item to="/" icon={LayoutDashboard} label="Dashboard" />
         <Item to="/vehicles" icon={Truck} label="Vehicles" />
+        <Item to="/work-orders" icon={ClipboardList} label="Work orders" />
         <Item to="/chat" icon={MessageSquare} label="Chat" />
-        <Disabled icon={Wrench} label="Vehicle detail" />
-        <Disabled icon={ClipboardList} label="Work orders" />
       </nav>
       <div className="mt-auto text-[11px] leading-relaxed text-[var(--color-text-muted)] px-2">
         <p>
