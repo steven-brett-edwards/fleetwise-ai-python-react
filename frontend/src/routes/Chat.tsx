@@ -1,16 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Sparkles, Wrench } from 'lucide-react'
+import { Plus, Send, Sparkles, Wrench } from 'lucide-react'
 import clsx from 'clsx'
-import { streamChat, type StreamEvent } from '../api/chat'
 import Markdown from '../components/Markdown'
-
-interface Message {
-  id: number
-  role: 'user' | 'assistant'
-  text: string
-  tools: string[]
-  error?: string
-}
+import { useChat, type ChatMessage } from '../contexts/ChatContext'
 
 const SUGGESTIONS = [
   'What vehicles does Public Works have?',
@@ -19,12 +11,9 @@ const SUGGESTIONS = [
 ]
 
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([])
+  const { messages, streaming, send, reset } = useChat()
   const [input, setInput] = useState('')
-  const [conversationId, setConversationId] = useState<string | null>(null)
-  const [streaming, setStreaming] = useState(false)
   const scrollerRef = useRef<HTMLDivElement | null>(null)
-  const nextIdRef = useRef(1)
 
   useEffect(() => {
     if (scrollerRef.current) {
@@ -32,64 +21,36 @@ export default function Chat() {
     }
   }, [messages])
 
-  async function send(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed || streaming) return
-
-    const userMessage: Message = {
-      id: nextIdRef.current++,
-      role: 'user',
-      text: trimmed,
-      tools: [],
-    }
-    const assistantId = nextIdRef.current++
-    const assistantMessage: Message = {
-      id: assistantId,
-      role: 'assistant',
-      text: '',
-      tools: [],
-    }
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
+  async function submit(text: string) {
     setInput('')
-    setStreaming(true)
-
-    try {
-      const newConvId = await streamChat({
-        message: trimmed,
-        conversationId: conversationId ?? undefined,
-        onEvent: (event: StreamEvent) => {
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== assistantId) return m
-              if (event.type === 'token') return { ...m, text: m.text + event.text }
-              if (event.type === 'tool') return { ...m, tools: [...m.tools, event.name] }
-              if (event.type === 'error') return { ...m, error: event.message }
-              return m
-            }),
-          )
-        },
-      })
-      if (newConvId) setConversationId(newConvId)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Streaming failed.'
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, error: message } : m)),
-      )
-    } finally {
-      setStreaming(false)
-    }
+    await send(text)
   }
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] max-w-3xl mx-auto">
-      <header className="mb-4">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-[var(--color-accent)]" />
-          Chat with the fleet
-        </h1>
-        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-          Asks the LangGraph ReAct agent. Tool calls stream in as they fire.
-        </p>
+      <header className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-[var(--color-accent)]" />
+            Chat with the fleet
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            Asks the LangGraph ReAct agent. Tool calls stream in as they fire.
+            Conversation persists across page navigation.
+          </p>
+        </div>
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            onClick={reset}
+            disabled={streaming}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Start a fresh conversation"
+          >
+            <Plus className="h-3 w-3" />
+            New chat
+          </button>
+        ) : null}
       </header>
 
       <div
@@ -97,7 +58,7 @@ export default function Chat() {
         className="flex-1 overflow-y-auto scroll-thin rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-4"
       >
         {messages.length === 0 ? (
-          <EmptyState onPick={send} />
+          <EmptyState onPick={submit} />
         ) : (
           messages.map((m) => <Bubble key={m.id} message={m} />)
         )}
@@ -107,7 +68,7 @@ export default function Chat() {
         className="mt-4 flex items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          void send(input)
+          void submit(input)
         }}
       >
         <textarea
@@ -116,7 +77,7 @@ export default function Chat() {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              void send(input)
+              void submit(input)
             }
           }}
           placeholder="Ask about vehicles, maintenance, or SOPs…"
@@ -137,7 +98,7 @@ export default function Chat() {
   )
 }
 
-function Bubble({ message }: { message: Message }) {
+function Bubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
   return (
     <div className={clsx('flex', isUser ? 'justify-end' : 'justify-start')}>

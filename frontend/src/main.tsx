@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App'
+import { ChatProvider } from './contexts/ChatContext'
 import Dashboard from './routes/Dashboard'
 import Vehicles from './routes/Vehicles'
 import VehicleDetail from './routes/VehicleDetail'
@@ -23,18 +24,20 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<App />}>
-            <Route index element={<Dashboard />} />
-            <Route path="vehicles" element={<Vehicles />} />
-            <Route path="vehicles/:id" element={<VehicleDetail />} />
-            <Route path="work-orders" element={<WorkOrders />} />
-            <Route path="work-orders/:id" element={<WorkOrderDetail />} />
-            <Route path="chat" element={<Chat />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <ChatProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<App />}>
+              <Route index element={<Dashboard />} />
+              <Route path="vehicles" element={<Vehicles />} />
+              <Route path="vehicles/:id" element={<VehicleDetail />} />
+              <Route path="work-orders" element={<WorkOrders />} />
+              <Route path="work-orders/:id" element={<WorkOrderDetail />} />
+              <Route path="chat" element={<Chat />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </ChatProvider>
     </QueryClientProvider>
   </StrictMode>,
 )
