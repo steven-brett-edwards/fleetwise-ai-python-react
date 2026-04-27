@@ -1,8 +1,8 @@
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMemo } from 'react'
-import clsx from 'clsx'
 import { useVehicles } from '../hooks/useFleetData'
 import Spinner from '../components/Spinner'
+import StatusPill from '../components/StatusPill'
 
 const STATUS_OPTIONS = ['', 'Active', 'InShop', 'OutOfService', 'Retired']
 const FUEL_OPTIONS = ['', 'Gasoline', 'Diesel', 'Hybrid', 'CNG', 'Electric']
@@ -84,14 +84,19 @@ export default function Vehicles() {
                   key={v.id}
                   className="border-t border-[var(--color-border)] hover:bg-[var(--color-surface-raised)]/40"
                 >
-                  <td className="px-4 py-3 font-medium text-[var(--color-accent)]">
-                    {v.assetNumber}
+                  <td className="px-4 py-3 font-medium">
+                    <Link
+                      to={`/vehicles/${v.id}`}
+                      className="text-[var(--color-accent)] hover:underline"
+                    >
+                      {v.assetNumber}
+                    </Link>
                   </td>
                   <td className="px-4 py-3">
                     {v.year} {v.make} {v.model}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusPill status={v.status} />
+                    <StatusPill value={v.status} />
                   </td>
                   <td className="px-4 py-3 text-[var(--color-text-muted)]">{v.department}</td>
                   <td className="px-4 py-3 text-[var(--color-text-muted)]">{v.fuelType}</td>
@@ -147,23 +152,3 @@ function Select({
   )
 }
 
-function StatusPill({ status }: { status: string }) {
-  const tone =
-    status === 'Active'
-      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-      : status === 'InShop'
-        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-        : status === 'OutOfService'
-          ? 'bg-red-500/10 text-red-400 border-red-500/30'
-          : 'bg-gray-500/10 text-gray-400 border-gray-500/30'
-  return (
-    <span
-      className={clsx(
-        'inline-block rounded-full border px-2 py-0.5 text-xs font-medium',
-        tone,
-      )}
-    >
-      {status}
-    </span>
-  )
-}

@@ -85,6 +85,62 @@ export const MaintenanceScheduleItemSchema = z
   }))
 export type MaintenanceScheduleItem = z.infer<typeof MaintenanceScheduleItemSchema>
 
+export const MaintenanceRecordSchema = z
+  .object({
+    Id: z.number(),
+    VehicleId: z.number(),
+    WorkOrderId: z.number().nullable().optional(),
+    MaintenanceType: z.string(),
+    PerformedDate: z.string(),
+    MileageAtService: z.number(),
+    Description: z.string(),
+    Cost: z.number(),
+    TechnicianName: z.string(),
+  })
+  .transform((v) => ({
+    id: v.Id,
+    vehicleId: v.VehicleId,
+    workOrderId: v.WorkOrderId ?? null,
+    maintenanceType: v.MaintenanceType,
+    performedDate: v.PerformedDate,
+    mileageAtService: v.MileageAtService,
+    description: v.Description,
+    cost: v.Cost,
+    technicianName: v.TechnicianName,
+  }))
+export type MaintenanceRecord = z.infer<typeof MaintenanceRecordSchema>
+
+export const WorkOrderSchema = z
+  .object({
+    Id: z.number(),
+    WorkOrderNumber: z.string(),
+    VehicleId: z.number(),
+    Status: z.string(),
+    Priority: z.string(),
+    Description: z.string(),
+    RequestedDate: z.string(),
+    CompletedDate: z.string().nullable().optional(),
+    AssignedTechnician: z.string().nullable().optional(),
+    LaborHours: z.number().nullable().optional(),
+    TotalCost: z.number().nullable().optional(),
+    Notes: z.string().nullable().optional(),
+  })
+  .transform((v) => ({
+    id: v.Id,
+    workOrderNumber: v.WorkOrderNumber,
+    vehicleId: v.VehicleId,
+    status: v.Status,
+    priority: v.Priority,
+    description: v.Description,
+    requestedDate: v.RequestedDate,
+    completedDate: v.CompletedDate ?? null,
+    assignedTechnician: v.AssignedTechnician ?? null,
+    laborHours: v.LaborHours ?? null,
+    totalCost: v.TotalCost ?? null,
+    notes: v.Notes ?? null,
+  }))
+export type WorkOrder = z.infer<typeof WorkOrderSchema>
+
 export const ChatResponseSchema = z
   .object({
     Response: z.string(),

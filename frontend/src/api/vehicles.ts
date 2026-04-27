@@ -1,6 +1,15 @@
 import { z } from 'zod'
 import { apiGet } from './client'
-import { FleetSummarySchema, VehicleSchema, type Vehicle, type FleetSummary } from './schemas'
+import {
+  FleetSummarySchema,
+  MaintenanceRecordSchema,
+  VehicleSchema,
+  WorkOrderSchema,
+  type FleetSummary,
+  type MaintenanceRecord,
+  type Vehicle,
+  type WorkOrder,
+} from './schemas'
 
 export interface VehicleFilters {
   status?: string
@@ -24,4 +33,18 @@ export function getVehicles(filters?: VehicleFilters): Promise<Vehicle[]> {
 
 export function getFleetSummary(): Promise<FleetSummary> {
   return apiGet('/vehicles/summary', (raw) => FleetSummarySchema.parse(raw))
+}
+
+export function getVehicleById(id: number): Promise<Vehicle> {
+  return apiGet(`/vehicles/${id}`, (raw) => VehicleSchema.parse(raw))
+}
+
+export function getVehicleMaintenance(id: number): Promise<MaintenanceRecord[]> {
+  return apiGet(`/vehicles/${id}/maintenance`, (raw) =>
+    z.array(MaintenanceRecordSchema).parse(raw),
+  )
+}
+
+export function getVehicleWorkOrders(id: number): Promise<WorkOrder[]> {
+  return apiGet(`/vehicles/${id}/work-orders`, (raw) => z.array(WorkOrderSchema).parse(raw))
 }
