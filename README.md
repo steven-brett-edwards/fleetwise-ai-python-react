@@ -1,12 +1,22 @@
 # FleetWise AI — Python + React edition
 
-> A Python/FastAPI + LangGraph + Anthropic Claude rewrite of [FleetWise AI](https://github.com/steven-brett-edwards/fleetwise-ai), with a new React + TypeScript frontend.
+> A Python/FastAPI + LangGraph rewrite of [FleetWise AI](https://github.com/steven-brett-edwards/fleetwise-ai), with a React + TypeScript frontend served from the same Render service.
 
 **Sister project:** the original .NET + Angular edition lives at [`steven-brett-edwards/fleetwise-ai`](https://github.com/steven-brett-edwards/fleetwise-ai) and is deployed at [fleetwise-frontend.onrender.com](https://fleetwise-frontend.onrender.com). This repo ports the same app to a Python/LangGraph/React stack — same domain, same tool-use surface, same SOP documents, different ecosystem.
 
 ## Live demo
 
-API is up at **https://fleetwise-py-api.onrender.com** on Render's free tier. First request after idle is slow (container cold-start + one-shot Chroma ingestion); subsequent requests are fast.
+**Open [`https://fleetwise-py-api.onrender.com`](https://fleetwise-py-api.onrender.com)** — the React app loads, the chat connects to the deployed LangGraph agent, and the dashboard pulls live fleet data. Render free tier cold-starts after idle, so the first request can take ~30 seconds; subsequent requests are fast.
+
+### What to try in the chat view
+
+A 90-second tour that exercises every layer:
+
+1. **"What vehicles does Public Works have?"** — renders a table via the `search_vehicles` SQL tool-call.
+2. **"What's the anti-idling rule?"** — answered from an ingested SOP via the `search_fleet_documentation` RAG tool.
+3. **(follow-up in the same thread) "Which of those are overdue for maintenance?"** — demonstrates checkpointed conversation state and multi-tool reasoning across `search_vehicles` + `get_overdue_maintenance`.
+
+### Prefer the API directly?
 
 ```bash
 API=https://fleetwise-py-api.onrender.com
@@ -65,7 +75,7 @@ curl -sS -X POST "$API/api/chat" -H 'Content-Type: application/json' \
 
 ## Why two editions?
 
-The original is C# / Angular / Semantic Kernel / OpenAI. This one is Python / React / LangGraph / Anthropic. Shipping the same product twice demonstrates that the interesting work — domain modeling, tool design, RAG, streaming UX, deployment — was deliberate, not accidentally tied to one stack. It also gives the Python edition room to fix three things the .NET version has as rough edges:
+The original is C# / Angular / Semantic Kernel. This one is Python / React / LangGraph. Both run on OpenAI for chat and embeddings — keeping the LLM constant means the diff between them is the parts that actually matter: domain modeling, agent orchestration, RAG, streaming UX, deployment. The Python edition is also a chance to fix three rough edges from the .NET version:
 
 1. **Conversation history survives restarts.** LangGraph's `AsyncSqliteSaver` checkpointer replaces the .NET `ConcurrentDictionary<string, ChatHistory>` that evaporates on process restart.
 2. **RAG ingestion is idempotent.** Chroma on a persistent volume means the SOP corpus is embedded once, not on every cold start.
@@ -76,13 +86,13 @@ The original is C# / Angular / Semantic Kernel / OpenAI. This one is Python / Re
 ```mermaid
 flowchart LR
     User([Fleet manager])
-    UI[React 18 + Vite SPA]
+    UI["React 18 + Vite SPA<br/>(served by FastAPI StaticFiles at /)"]
     API["FastAPI 0.115<br/>+ LangGraph StateGraph"]
     Tools["LangGraph tools<br/>FleetQuery · Maintenance<br/>WorkOrder · DocumentSearch"]
     DB[("SQLite<br/>fleet data")]
     Check[("SQLite<br/>checkpoints")]
     Vec[("Chroma<br/>SOP embeddings")]
-    LLM["Claude Sonnet 4.5<br/>(or OpenAI / Ollama)"]
+    LLM["OpenAI gpt-4o-mini<br/>(swappable: Anthropic / Ollama)"]
 
     User --> UI
     UI <-->|REST + SSE| API
@@ -101,7 +111,7 @@ flowchart LR
 | Data             | EF Core 9 + SQLite                  | SQLAlchemy 2.x async + aiosqlite            |
 | DTOs             | C# records + enum converter         | Pydantic v2 (PascalCase aliases on wire)    |
 | AI orchestration | Semantic Kernel 1.74                | LangGraph 0.2 (prebuilt → custom StateGraph)|
-| LLM              | OpenAI / Ollama / Groq              | Anthropic Claude / OpenAI / Ollama          |
+| LLM              | OpenAI / Ollama / Groq              | OpenAI / Anthropic / Ollama (provider-swap) |
 | Tool calling     | `[KernelFunction]` attributes       | `@tool` + pydantic arg schemas              |
 | Vector store     | `InMemoryVectorStore`               | Chroma persistent (volume-backed)           |
 | Chat history     | `ConcurrentDictionary` (in-memory)  | LangGraph `AsyncSqliteSaver` (persistent)   |
@@ -142,16 +152,26 @@ The full plan lives in [`docs/migration-plan.md`](./docs/migration-plan.md). Ten
 
 - **Production Python** — FastAPI async, Pydantic v2, SQLAlchemy 2.x async.
 - **Clean architecture** — `domain / data / api / ai` separation with typed repositories.
-- **React frontend** — Phase 9 ships a React + TypeScript + Vite app consuming the same API.
+- **React frontend** — React 18 + TypeScript + Vite + TanStack Query, served by FastAPI in prod (one Render service, no prod CORS).
 - **LLM-powered apps: agent orchestration, tool use, RAG** — LangGraph StateGraph, 13 tools across 4 areas, Chroma-backed RAG over fleet SOPs.
 - **LLM reliability** — persistent checkpoints, error-resilient streaming, SSE framing fix, conditional tool advertisement.
 - **Cloud platforms** — Render primary + AWS appendix (ECS Fargate + RDS + Bedrock option).
 - **Data pipelines / unstructured data** — Optional Phase 10 ETL ingests messy inspection CSVs with LLM-driven header mapping.
 - **End-to-end ownership** — every phase is a complete deliverable with its own tests, commit, and verification step.
 
+## Built with Claude Code
+
+Every line of this project was shipped using [Claude Code](https://claude.com/claude-code) as the primary coding partner. The workflow shows up across the commit history:
+
+- **Plan → Edit → Review loops.** Each phase started in plan mode — Claude explored the codebase, drafted a phase plan against `docs/migration-plan.md`, and only exited plan mode after the approach was concrete enough to execute. The plan files (e.g. the Phase 3 LangGraph plan, the Phase 9 v1 same-day-ship plan) are preserved in the migration guide as a record of how each chunk was scoped before code touched disk.
+- **Subagent workflows.** Exploration, code review, and "second opinion" passes were delegated to specialized subagents so the main thread stayed focused on the change at hand. The Phase 5 RAG wiring bug (a `from`-import vs `monkeypatch` mismatch in the agent module) was caught by a review subagent before the PR opened.
+- **`TodoWrite` for multi-phase planning.** Each phase carried a live todo list scoped to that PR — visible in the transcripts, surfaced in the Claude Code UI — so progress was always one query away from the work itself. Phases that drifted (Phase 6 disk-mount-on-free-tier, Phase 9 v1 vs v2 scope split) re-grounded against the todo list rather than against memory.
+
+The migration guide in [`docs/migration-plan.md`](./docs/migration-plan.md) was itself a Claude Code artifact: drafted in plan mode at the start of the project, refined session-by-session as decisions firmed up, and used as the source of truth every time a new phase started. Claude Code is in daily use here since January 2026.
+
 ## Status
 
-Backend live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com). React frontend pending (Phase 9).
+Live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com) — backend + React frontend on one Render service.
 
 - [x] Phase 0 — Scaffold + Render hello-world
 - [x] Phase 1 — Domain + data + seed
@@ -160,9 +180,10 @@ Backend live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrende
 - [x] Phase 4 — Custom StateGraph + SSE streaming
 - [x] Phase 5 — RAG pipeline
 - [x] Phase 6 — Render deploy finalization
-- [ ] Phase 7 — Tests + CI
-- [ ] Phase 8 — README polish
-- [ ] Phase 9 — React frontend
+- [ ] Phase 7 — Tests + CI polish (coverage floor + SQLite aggregation regression test)
+- [x] Phase 8 — README polish
+- [x] Phase 9 v1 — React frontend (Dashboard / Vehicles / Chat)
+- [ ] Phase 9 v2 — Frontend depth (Vehicle detail + Work orders, MSW component tests)
 - [ ] Phase 10 — *(optional)* ETL pipeline
 
 ## Running locally
@@ -171,13 +192,13 @@ Backend live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrende
 
 - [Python 3.12](https://www.python.org/downloads/)
 - [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- An API key for at least one LLM provider. The chat provider and embedding provider are configured independently — Anthropic has no embeddings endpoint, so RAG needs OpenAI or Ollama even when chat is Anthropic.
+- An API key for at least one LLM provider. The deployed demo runs on OpenAI for both chat (`gpt-4o-mini`) and embeddings (`text-embedding-3-small`); the provider factory also supports Anthropic for chat and Ollama for both, configured via `AI_PROVIDER` in `.env`. Anthropic has no embeddings endpoint, so when chat is Anthropic the embedding side falls back to OpenAI or Ollama.
 
 ### Backend
 
 ```bash
 uv sync
-cp .env.example .env   # fill in ANTHROPIC_API_KEY (or AI_PROVIDER=openai + OPENAI_API_KEY)
+cp .env.example .env   # default: AI_PROVIDER=openai + OPENAI_API_KEY (matches the deployed demo)
 uv run uvicorn fleetwise.main:app --reload --port 5100
 
 curl -sS http://localhost:5100/api/vehicles/summary                 # REST
@@ -196,7 +217,20 @@ uv run pytest --cov=fleetwise --cov-report=term-missing
 
 ### Frontend
 
-Not scaffolded yet — arrives in Phase 9.
+```bash
+cd frontend
+npm install
+npm run dev      # Vite on http://localhost:5173, /api/* proxied to localhost:8000
+```
+
+The dev server proxies `/api/*` to `http://localhost:8000` (configured in `vite.config.ts`), so you point the backend at port 8000 and the frontend at 5173 and they talk to each other without CORS. To target a different backend (the deployed Render service, for example), set `VITE_API_BASE_URL` in `frontend/.env.development`.
+
+```bash
+npm run build    # production bundle into frontend/dist/
+npm run test     # vitest
+```
+
+In production, `frontend/dist/` is copied into the Docker image and served by FastAPI's `StaticFiles` mount at `/`, so the API and UI ship from one Render service.
 
 ## License
 
