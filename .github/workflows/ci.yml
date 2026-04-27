@@ -34,7 +34,11 @@ jobs:
         run: uv run mypy src
 
       - name: Run tests
-        run: uv run pytest --cov=fleetwise --cov-report=xml --cov-report=term-missing
+        # Coverage floor at 90% is an enforced ratchet -- new code without
+        # tests will trip CI before review even sees it. Local dev intentionally
+        # does NOT enforce the floor (in pyproject) so iterating on a half-
+        # written change isn't blocked by a coverage drop.
+        run: uv run pytest --cov=fleetwise --cov-report=xml --cov-report=term-missing --cov-fail-under=90
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
