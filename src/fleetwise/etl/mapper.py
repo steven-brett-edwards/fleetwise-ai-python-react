@@ -115,13 +115,18 @@ def map_headers(
         # the original casing the caller passed in.
         return {h: cached.get(h.strip().lower()) for h in headers}
 
-    chat = model if model is not None else build_chat_model(settings)
-    structured = chat.with_structured_output(HeaderMappingResult)
+    # `build_chat_model` is inside the try because a misconfigured provider
+    # (e.g. AI_PROVIDER=anthropic with ANTHROPIC_API_KEY unset on CI) raises
+    # at construction time, not at invoke time. The mapper's contract is
+    # "best-effort -- fall back to seeded-only on any provider trouble,"
+    # which includes config trouble. The pipeline will surface unmapped
+    # headers as per-row rejections, which is more actionable than "the
+    # whole ingest crashed."
     try:
+        chat = model if model is not None else build_chat_model(settings)
+        structured = chat.with_structured_output(HeaderMappingResult)
         result = structured.invoke(_build_prompt(headers))
     except Exception:
-        # The pipeline will surface unmapped headers as per-row rejections,
-        # which is more actionable than "the whole ingest crashed."
         return seeded
 
     # Pydantic structured output gives us HeaderMappingResult. Some providers

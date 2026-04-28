@@ -28,17 +28,23 @@ from fleetwise.settings import Settings
 async def test_ingest_inspections_if_empty_loads_committed_corpus(
     session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Empty table + corpus on disk -> inspections appear in the DB."""
+    """Empty table + corpus on disk -> inspections appear in the DB.
+
+    On CI there's no LLM API key, so the mapper falls back to seeded-only
+    matching for non-canonical headers. The two fixture files using fully
+    canonical snake_case headers (batch-b + ev-fleet, 13 records combined)
+    are guaranteed to load; the rest depend on an LLM call we won't make
+    in this environment. Asserting only on the canonical-headers slice
+    keeps the test deterministic across CI and local-with-key runs.
+    """
     settings = Settings(etl_cache_dir=str(tmp_path), inspections_dir="./data/inspections")
     loaded = await ingest_inspections_if_empty(session, settings)
 
     assert loaded > 0
     rows = (await session.execute(select(VehicleInspection))).scalars().all()
-    # The mapper without an LLM key falls back to the seeded canonical
-    # path, so files with non-canonical headers may not load -- but the
-    # canonical-header files (batch-a, batch-b, ev-fleet, etc.) always
-    # do. Assert at least one of those landed.
-    assert any(r.source_file.startswith("inspections-2026-03-batch") for r in rows)
+    sources = {r.source_file for r in rows}
+    assert "inspections-2026-03-batch-b.csv" in sources
+    assert "ev-fleet-2026-04.csv" in sources
 
 
 @pytest.mark.asyncio
