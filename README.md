@@ -153,10 +153,10 @@ The full plan lives in [`docs/migration-plan.md`](./docs/migration-plan.md). Ten
 - **Production Python** — FastAPI async, Pydantic v2, SQLAlchemy 2.x async.
 - **Clean architecture** — `domain / data / api / ai` separation with typed repositories.
 - **React frontend** — React 18 + TypeScript + Vite + TanStack Query, served by FastAPI in prod (one Render service, no prod CORS).
-- **LLM-powered apps: agent orchestration, tool use, RAG** — LangGraph StateGraph, 13 tools across 4 areas, Chroma-backed RAG over fleet SOPs.
+- **LLM-powered apps: agent orchestration, tool use, RAG** — LangGraph StateGraph, 14 tools across 5 areas (fleet, maintenance, work-orders, RAG, inspection ETL), Chroma-backed RAG over fleet SOPs.
 - **LLM reliability** — persistent checkpoints, error-resilient streaming, SSE framing fix, conditional tool advertisement.
 - **Cloud platforms** — Render primary + AWS appendix (ECS Fargate + RDS + Bedrock option).
-- **Data pipelines / unstructured data** — Optional Phase 10 ETL ingests messy inspection CSVs with LLM-driven header mapping.
+- **Data pipelines / unstructured data** — Phase 10 ETL ingests messy inspection CSVs with LLM-driven header mapping (cached to disk so re-runs skip the network), idempotent on a `(source_file, source_row_hash)` index, and exposes results to the chat agent via a 14th tool. See [`docs/etl.md`](./docs/etl.md).
 - **End-to-end ownership** — every phase is a complete deliverable with its own tests, commit, and verification step.
 
 ## Built with Claude Code
@@ -184,7 +184,7 @@ Live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com) �
 - [x] Phase 8 — README polish
 - [x] Phase 9 v1 — React frontend (Dashboard / Vehicles / Chat)
 - [ ] Phase 9 v2 — Frontend depth (Vehicle detail + Work orders, MSW component tests)
-- [ ] Phase 10 — *(optional)* ETL pipeline
+- [x] Phase 10 — ETL pipeline (vehicle inspections)
 
 ## Running locally
 

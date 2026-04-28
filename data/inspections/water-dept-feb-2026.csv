@@ -1,0 +1,7 @@
+unit_no,inspection_dt,inspected_by,current_mileage,outcome,observations
+V-2018-0004,2/4/2026,K. Nguyen,68420,OK,Pump-truck PTO functional; no obvious leaks at the discharge fitting.
+V-2021-0009,2/4/2026,K. Nguyen,55300,OK,Cargo-van interior fitted out; rear door latch sticks intermittently.
+V-2023-0013,2/5/2026,K. Nguyen,28100,OK,Recent service confirmed; rotors look new.
+V-2016-0024,2/11/2026,K. Nguyen,84920,FAIL,Backhoe stabilizer leg drift -- cylinder seal suspected.
+V-2022-0020,2/11/2026,K. Nguyen,38450,OK,Tire pressures adjusted; passenger-side mirror loose at base.
+V-9999-0001,2/12/2026,K. Nguyen,12000,OK,Mystery vehicle in lot; possibly leased equipment? Verify with dispatch.

@@ -1,0 +1,8 @@
+Vehicle ID,Inspection Date,Tech,Odometer,Result,Notes,Followup
+V-2019-0001,2026-01-12,Diaz,141200,Pass,Snow-plow mounting points checked; bolts torqued to 110 ft-lb.,
+V-2017-0007,2026-01-12,Diaz,"146,890",Pass,Front-end alignment within tolerance.,Recheck after pothole season.
+V-2018-0021,2026-01-19,Diaz,"63,210",Pass,Dump-bed pivot inspected; grease applied.,
+V-2019-0023,2026-01-19,Diaz,"70,455",Fail,PTO hydraulic line weeping at the rear coupler.,Replace coupler before next assignment.
+V-2022-0026,2026-02-03,B. Hassan,30210,Pass,Dump bed cycle test 12s extend / 9s retract within spec.,
+V-2021-0025,2026-02-03,B. Hassan,1900,Pass,Backhoe greased at all 14 zerks.,
+V-2020-0022,2026-02-10,B. Hassan,46100,Pass,Cab heater functional; defrost weak on driver side.,Diagnose defrost vent under warranty.

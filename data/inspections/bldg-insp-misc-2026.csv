@@ -1,0 +1,10 @@
+Vehicle ID,Inspection Date,Tech,Odometer,Result,Notes,Followup
+V-2020-0006,3/3/2026,B. Hassan,53.1k,Pass,"Light-duty truck; bedliner intact, tow hitch checked.",
+V-2022-0011,3/3/2026,B. Hassan,"19,210",PASS,Cargo van; equipment lockers secure.,
+V-2021-0019,March 10 2026,T. O'Brien,33450,Y,Hybrid sedan; battery health 92%.,
+V-2022-0016,3/10/2026,T. O'Brien,"22,800",Pass,Sedan; clean.,
+V-2022-0011,3/24/2026,T. O'Brien,19800,Fail,"Cargo van returned with check-engine light.
+Code P0420: catalyst efficiency below threshold.","Diagnose, likely O2 sensor replacement."
+V-2023-0008,3/30/2026,T. O'Brien,19400,Pass,Silverado RST; routine.,
+V-2024-0034,3/30/2026,T. O'Brien,5800,Pass,E-Transit; cargo lockers secured.,
+V-2020-0006,4/2/2026,B. Hassan,54.5k,Pass,Light-duty truck; routine April check.,
