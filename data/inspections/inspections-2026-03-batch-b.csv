@@ -1,0 +1,8 @@
+asset_number,inspected_at,inspector_name,mileage,passed,findings,recommendations
+V-2020-0010,2026-03-15,Maria Alvarez,78430,true,Steering column tight; PS fluid clean.,
+V-2020-0022,2026-03-15,Maria Alvarez,48210,true,Rear suspension bushings beginning to crack but still serviceable.,Reinspect at 55k.
+V-2021-0028,2026-03-16,J. Walters,47600,true,CNG fittings inspected; no leaks at 250 PSI.,
+V-2022-0005,2026-03-16,J. Walters,41380,false,DEF tank check revealed crystalline buildup at filler neck.,Flush DEF system; replace cap.
+V-2019-0012,2026-03-18,Maria Alvarez,92450,true,Passenger sliding door rattles at speed; latch within spec.,Lubricate latch mechanism.
+V-2024-0030,2026-03-22,J. Walters,8930,true,New-vehicle 5k inspection complete.,Standard 10k follow-up.
+V-2024-0035,2026-03-22,J. Walters,4120,true,Battery health 100%; tire wear even.,Schedule 10k digital diagnostic.

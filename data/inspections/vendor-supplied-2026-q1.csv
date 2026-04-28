@@ -1,0 +1,7 @@
+vehicle_asset,inspected_on,inspector,mileage_reading,outcome,comments,recommendation
+V-2024-0030,15-Mar-2026,Apex Vehicle Services,9210,Pass,Warranty inspection per dealer schedule. All systems nominal.,Standard 10k service.
+V-2024-0034,15-Mar-2026,Apex Vehicle Services,5650,Pass,E-Transit warranty check. Battery health 99%.,
+V-2024-0035,15-Mar-2026,Apex Vehicle Services,4350,Pass,Tesla M3 quarterly check via mobile service.,
+V-2023-0033,22-Mar-2026,Apex Vehicle Services,17800,Pass,Bolt EV; 12V battery flagged amber but not yet failing.,Replace 12V at next service.
+V-2023-0008,22-Mar-2026,Apex Vehicle Services,19120,Pass,Silverado RST; routine.,
+V-9999-0001,22-Mar-2026,Apex Vehicle Services,33400,Pass,Vendor-listed asset not in our fleet roster.,Confirm asset assignment.

@@ -139,6 +139,28 @@ class ChatResponse(_WireModel):
     functions_used: list[str]
 
 
+class VehicleInspectionResponse(_WireModel):
+    """Wire shape for an ETL-loaded inspection record.
+
+    Exposed through the chat tool (and ready for a future REST endpoint
+    if a frontend "Inspections" route lands). The ``unmatched_asset_number``
+    field is non-null only when the row was an orphan at load time -- it
+    surfaces the original CSV value so the caller knows *why* this row
+    has no FK.
+    """
+
+    id: int
+    vehicle_id: int | None
+    unmatched_asset_number: str | None
+    inspected_at: datetime
+    inspector_name: str
+    mileage: int | None
+    passed: bool
+    findings: str
+    recommendations: str | None
+    source_file: str
+
+
 class MaintenanceScheduleItemResponse(_WireModel):
     """Projection shape matching MaintenanceController's overdue/upcoming payload.
 

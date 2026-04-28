@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     ollama_embedding_model: str = "nomic-embed-text"
 
+    # --- ETL pipeline (Phase 10) ------------------------------------------
+    # Directory the inspection-CSV ETL pipeline writes its persistent caches
+    # to. The header-mapping cache lives here as `header-mappings.json` --
+    # an LLM call per unique CSV header set is cheap, but a million calls
+    # for the same shapes is silly, so we memoize on disk. Default sits
+    # beside the data tree for easy git inclusion (the file is small,
+    # deterministic, and demoable).
+    etl_cache_dir: str = "./data/etl-cache"
+
     # --- Frontend (Phase 9) -----------------------------------------------
     # Absolute path to the built React SPA (`frontend/dist`). When unset,
     # `main._mount_frontend` walks up from the source tree to find the

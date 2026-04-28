@@ -1,0 +1,7 @@
+asset_number,inspected_at,inspector_name,mileage,passed,findings,recommendations
+V-2023-0033,2026-04-05,J. Walters,18420,true,Bolt EV; 12V battery replaced under warranty 04/01.,
+V-2024-0034,2026-04-05,J. Walters,6210,true,E-Transit; cargo capacity within spec; charging port clean.,
+V-2024-0035,2026-04-12,J. Walters,4980,true,Tesla M3; software 2026.4.1 installed; tire rotation completed.,
+V-2024-0030,2026-04-15,Maria Alvarez,9890,true,Silverado 1500 WT; routine 10k inspection.,Dealer 10k service due.
+V-2023-0029,2026-04-19,Maria Alvarez,16210,true,F-150 XLT; routine.,
+V-2023-0008,2026-04-22,Maria Alvarez,20100,true,Silverado RST; brake pads 70%.,

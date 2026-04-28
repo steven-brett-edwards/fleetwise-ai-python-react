@@ -24,7 +24,16 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from fleetwise.domain.enums import (
@@ -194,3 +203,50 @@ class Part(Base):
     reorder_threshold: Mapped[int] = mapped_column(Integer)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     location: Mapped[str] = mapped_column(String(64))
+
+
+class VehicleInspection(Base):
+    """Inspection record loaded from a messy external CSV via the ETL pipeline.
+
+    Three deliberate design choices worth flagging:
+
+    1. ``vehicle_id`` is nullable. When a CSV row references an asset
+       number we don't have in the fleet (the inspection equivalent of an
+       orphan record), we load it anyway with ``vehicle_id=None`` and the
+       original string preserved on ``unmatched_asset_number``. The
+       pipeline's job is to *normalize and load*, not to silently drop
+       data that arrived in our inbox -- a recruiter reading the code
+       sees this is a deliberate policy, not an oversight.
+
+    2. ``(source_file, source_row_hash)`` is the idempotency key. The
+       hash is sha256 of the canonical (post-transform) row payload, so
+       running the same CSV twice produces the same hash and the second
+       run becomes a no-op upsert.
+
+    3. No SQL ``CASCADE`` on the FK. If a vehicle is deleted (which we
+       never do in practice but which the schema allows), inspections
+       become orphans -- ``ondelete="SET NULL"`` keeps the history.
+    """
+
+    __tablename__ = "vehicle_inspections"
+    __table_args__ = (
+        UniqueConstraint("source_file", "source_row_hash", name="uq_inspection_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vehicle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicles.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    unmatched_asset_number: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )
+    inspected_at: Mapped[datetime] = mapped_column(DateTime)
+    inspector_name: Mapped[str] = mapped_column(String(128))
+    mileage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passed: Mapped[bool] = mapped_column(Boolean)
+    findings: Mapped[str] = mapped_column(String)
+    recommendations: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_file: Mapped[str] = mapped_column(String(255), index=True)
+    source_row_hash: Mapped[str] = mapped_column(String(64))
+
+    vehicle: Mapped[Vehicle | None] = relationship()

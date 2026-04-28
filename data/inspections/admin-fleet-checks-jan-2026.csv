@@ -1,0 +1,8 @@
+Asset #,Date Inspected,Inspector Name,Miles,Passed (Y/N),Findings,Action Items
+V-2021-0014,2026-01-08,Maria Alvarez,"38,210",Y,Sedan in for routine 30-day check; clean.,
+V-2020-0015,2026-01-08,Maria Alvarez,48.2k,Y,Approaching 50k service threshold.,Book 50k service window.
+V-2019-0017,2026-01-15,Maria Alvarez,77.9k,Y,Sedan; no issues observed.,
+V-2023-0018,2026-01-15,Maria Alvarez,"11,820",Y,Like-new condition.,
+V-2020-0032,2026-01-22,Maria Alvarez,,Y,Mileage reading not captured -- odometer momentarily inactive.,Confirm odometer at next stop.
+V-9999-0001,2026-01-29,Maria Alvarez,5500,Y,Unmatched asset -- possible legacy entry.,Reconcile with fleet roster.
+V-2024-0035,2026-01-29,Maria Alvarez,3100,Y,Tesla M3; software up to date.,

@@ -39,6 +39,12 @@ env/
 *.sqlite3
 /data/chroma/
 /data/checkpoints.db
+# ETL header-mapping cache is populated by `fleetwise-etl ingest`. Don't
+# commit it -- a cache built from a run without a real LLM key memoizes
+# nulls for non-canonical headers and would poison future runs with
+# false hits. The empty `.gitkeep` keeps the dir present.
+/data/etl-cache/*
+!/data/etl-cache/.gitkeep
 
 # Frontend (lands in Phase 9)
 frontend/node_modules/
