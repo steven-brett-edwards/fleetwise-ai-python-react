@@ -44,6 +44,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # /app/data so the Render disk mount at /app/data doesn't shadow it.
 COPY data/documents ./documents
 
+# Inspection-CSV fixture corpus for the Phase 10 ETL pipeline. Loaded
+# at boot by `ingest_inspections_if_empty` so the deployed demo can
+# answer "what did the latest inspection on V-2020-0010 find?". Same
+# /app/foo (not /app/data/foo) layout as documents above; the matching
+# INSPECTIONS_DIR env var in render.yaml points the code at it.
+COPY data/inspections ./inspections
+
 
 FROM python:3.12-slim-bookworm AS runtime
 

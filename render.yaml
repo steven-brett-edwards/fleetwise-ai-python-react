@@ -42,6 +42,14 @@ services:
       - key: DOCUMENTS_DIR
         value: /app/documents
 
+      # Inspection-CSV fixture corpus, loaded by the Phase 10 ETL pipeline's
+      # startup hook. Without this override the lifespan resolves the default
+      # ./data/inspections (relative to cwd) which doesn't exist in the image,
+      # and the chat tool's "no inspections found" answer goes from rare to
+      # universal.
+      - key: INSPECTIONS_DIR
+        value: /app/inspections
+
       # --- AI providers -------------------------------------------------
       # Default to OpenAI for the hosted demo since we only have an
       # OPENAI_API_KEY on file. Anthropic is still wired up in code; set
