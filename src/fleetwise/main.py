@@ -31,6 +31,7 @@ from fleetwise.api import (
 )
 from fleetwise.data.db import get_session_factory, init_db
 from fleetwise.data.seed import seed_if_empty
+from fleetwise.etl.bootstrap import ingest_inspections_if_empty
 from fleetwise.settings import get_settings
 
 
@@ -45,11 +46,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     `async with` on shutdown closes it cleanly.
     """
     await init_db()
+    settings = get_settings()
     factory = get_session_factory()
     async with factory() as session:
         await seed_if_empty(session)
+        # Phase 10: keep the deployed demo self-contained. On Render's
+        # ephemeral free-tier filesystem the inspection table evaporates
+        # on every cold-start; running the ETL pipeline here at boot
+        # rebuilds it. CLI remains the canonical "run a real pipeline"
+        # entry point.
+        await ingest_inspections_if_empty(session, settings)
 
-    settings = get_settings()
     async with agent_lifespan(settings) as agent:
         app.state.agent = agent
         yield

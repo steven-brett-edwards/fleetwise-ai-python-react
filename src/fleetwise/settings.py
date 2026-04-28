@@ -112,6 +112,14 @@ class Settings(BaseSettings):
     # deterministic, and demoable).
     etl_cache_dir: str = "./data/etl-cache"
 
+    # Directory the FastAPI lifespan walks for committed inspection CSVs.
+    # `ingest_inspections_if_empty` runs at boot and loads everything in
+    # this directory if the `vehicle_inspections` table is empty -- keeps
+    # the deployed demo self-contained on Render's ephemeral free-tier
+    # filesystem. The CLI is still the canonical way to run the pipeline
+    # against arbitrary inputs; this is just for the demo's seed path.
+    inspections_dir: str = "./data/inspections"
+
     # --- Frontend (Phase 9) -----------------------------------------------
     # Absolute path to the built React SPA (`frontend/dist`). When unset,
     # `main._mount_frontend` walks up from the source tree to find the

@@ -113,15 +113,27 @@ remains, preserving history. That's a deliberate choice; alternative
 designs that overwrite are also reasonable, but the audit-trail behavior
 matches what a municipal-fleet operator would actually want.
 
-### Why not run on backend startup?
+### Two run modes: CLI and lifespan-startup
 
-The seed pipeline (`seed_if_empty`) runs in the FastAPI lifespan because
-the data is canonical: every dev / prod environment wants the same 35
-vehicles. The ETL pipeline is the opposite — it's *demonstrating* a
-human-in-the-loop ingestion against external CSVs. Auto-running it on
-boot would muddy the framing ("this is a real pipeline that you run as
-a job") and make idempotency-test failures show up as boot crashes
-instead of CLI errors.
+The pipeline runs in two places:
+
+1. **CLI** (`fleetwise-etl ingest …`) — the canonical "run a real
+   pipeline as a job" entry point. Idempotency, JSON reports, custom
+   globs, custom `--db-url`. This is the way you'd invoke it in
+   production against an inbox of inspection drops.
+2. **Lifespan-startup hook** (`ingest_inspections_if_empty`,
+   [`src/fleetwise/etl/bootstrap.py`](../src/fleetwise/etl/bootstrap.py))
+   — runs at FastAPI boot, no-ops if the table already has rows. Loads
+   the committed `data/inspections/` corpus.
+
+Why both? Render's free tier has an ephemeral filesystem, so the
+inspection table evaporates on every cold-start and a CLI-only model
+would leave the deployed demo unable to answer inspection questions.
+The lifespan hook keeps the live demo self-contained without
+changing the CLI's "real pipeline" framing — the CLI is the demo of
+the pipeline; the lifespan hook is just the demo's seed path. Failures
+during startup ingest are caught and logged; a bad ingest must never
+tank the API boot.
 
 ## Common operator gotchas
 
