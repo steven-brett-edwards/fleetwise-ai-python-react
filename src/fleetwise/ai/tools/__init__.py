@@ -23,13 +23,7 @@ LIVE_DATA_TOOLS = [
     *inspection_tools,
 ]
 
-# Convenience alias preserved for callers that don't care about RAG
-# conditionality (e.g. tool-only unit tests). Equivalent to live-data
-# + doc-search; the agent builder decides which list to bind.
-ALL_TOOLS = [*LIVE_DATA_TOOLS, *document_search_tools]
-
 __all__ = [
-    "ALL_TOOLS",
     "LIVE_DATA_TOOLS",
     "document_search_tools",
     "fleet_query_tools",

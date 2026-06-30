@@ -187,7 +187,7 @@ async def agent_lifespan(
                 set_vector_store(vector_store)
                 # Tear the registry down on shutdown so tests starting a
                 # fresh app don't inherit a stale store from a previous run.
-                stack.push_async_callback(_clear_vector_store)
+                stack.callback(set_vector_store, None)
                 tools = [*tools, *document_search_tools]
                 system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{DOCUMENTATION_STANZA}"
 
@@ -217,11 +217,6 @@ def _rag_available(settings: Settings) -> bool:
     return bool(settings.openai_api_key) or True
 
 
-async def _clear_vector_store() -> None:
-    """AsyncExitStack callback to reset the tool retrieval registry."""
-    set_vector_store(None)
-
-
 def extract_functions_used(messages: Iterable[BaseMessage]) -> list[str]:
     """Unique tool names in order of first call.
 
@@ -231,11 +226,7 @@ def extract_functions_used(messages: Iterable[BaseMessage]) -> list[str]:
     sequence the LLM chose. Dedupe-while-preserving-order because the
     .NET side emits one entry per unique function, not per call.
     """
-    seen: dict[str, None] = {}
-    for msg in messages:
-        if isinstance(msg, ToolMessage) and msg.name and msg.name not in seen:
-            seen[msg.name] = None
-    return list(seen)
+    return list(dict.fromkeys(m.name for m in messages if isinstance(m, ToolMessage) and m.name))
 
 
 def final_ai_text(messages: Iterable[BaseMessage]) -> str:
