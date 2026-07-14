@@ -1,10 +1,13 @@
 import { API_BASE } from './client'
 
 // Matches src/fleetwise/ai/sse.py: backslash-escaped data lines to keep SSE
-// frame integrity. Reverse the same three escapes on read. Order matters —
-// decode `\\` last so we don't double-unescape.
+// frame integrity. Decode in a SINGLE pass — no order of sequential
+// `.replace()` calls is correct: decoding `\n` first corrupts an escaped
+// backslash followed by `n` (a literal `\n` the model emitted, e.g. in a
+// code block), and decoding `\\` first re-exposes `\n` pairs that were
+// never newlines. Same fix as the .NET edition's Angular client (PR #20).
 function unescapeSse(s: string): string {
-  return s.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\\\/g, '\\')
+  return s.replace(/\\(\\|n|r)/g, (_, c: string) => (c === 'n' ? '\n' : c === 'r' ? '\r' : '\\'))
 }
 
 export type StreamEvent =

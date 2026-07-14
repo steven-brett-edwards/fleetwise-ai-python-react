@@ -35,3 +35,26 @@ async def test_chat_threads_follow_up_on_supplied_conversation_id(
     )
     assert res.status_code == 200, res.text
     assert res.json()["ConversationId"] == "fixed-thread-id"
+
+
+async def test_chat_functions_used_reports_current_turn_only(
+    chat_client: AsyncClient,
+) -> None:
+    """Regression: FunctionsUsed must not accumulate across turns.
+
+    The checkpointer makes `ainvoke` return the whole thread, so scanning
+    it naively re-reports turn 1's tools on every later turn (the .NET
+    edition's PR #20 bug, faithfully ported). The scripted model calls
+    `get_fleet_summary` on turn 1 and answers turn 2 with plain text
+    (it replays its final response once the script is exhausted), so
+    turn 2 must report an empty FunctionsUsed list.
+    """
+    thread = {"ConversationId": "functions-per-turn-thread"}
+
+    first = await chat_client.post("/api/chat", json={"Message": "How big is the fleet?", **thread})
+    assert first.status_code == 200, first.text
+    assert first.json()["FunctionsUsed"] == ["get_fleet_summary"]
+
+    second = await chat_client.post("/api/chat", json={"Message": "Thanks!", **thread})
+    assert second.status_code == 200, second.text
+    assert second.json()["FunctionsUsed"] == []
