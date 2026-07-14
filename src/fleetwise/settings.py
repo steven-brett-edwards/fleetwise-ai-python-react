@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     app_name: str = "FleetWise AI (Python)"
     environment: str = "development"
 
-    # Async SQLAlchemy URL. Default lands the dev DB next to the repo root;
-    # Render mounts a persistent volume at /app/data and overrides this.
+    # Async SQLAlchemy URL. Default lands the dev DB next to the repo root.
+    # The free-tier Render demo overrides this to /tmp (no disk on that
+    # plan; the startup hooks reseed idempotently on every cold start).
+    # Point it at mounted storage to make the data genuinely persistent.
     database_url: str = "sqlite+aiosqlite:///./fleetwise.db"
 
     # CORS allow-list for the browser clients. Angular dev server defaults
@@ -59,12 +61,13 @@ class Settings(BaseSettings):
         return raw
 
     # --- AI / LangGraph configuration -------------------------------------
-    # Flip between Anthropic (hosted demo default), OpenAI (fallback), and
-    # Ollama (local-first, no API key). The factory in `ai.providers`
-    # matches on this literal.
+    # Flip between Anthropic (the local default), OpenAI (what the hosted
+    # demo actually runs -- render.yaml pins AI_PROVIDER=openai since only
+    # an OpenAI key is on file there), and Ollama (local-first, no API
+    # key). The factory in `ai.providers` matches on this literal.
     ai_provider: Literal["anthropic", "openai", "ollama"] = "anthropic"
 
-    # Anthropic (default for the hosted demo).
+    # Anthropic.
     anthropic_api_key: str | None = None
     anthropic_chat_model: str = "claude-sonnet-4-5"
 
@@ -78,10 +81,11 @@ class Settings(BaseSettings):
     ollama_endpoint: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.2"
 
-    # LangGraph checkpointer DB. Persistent conversation history across
-    # restarts -- a free upgrade over the .NET `ConcurrentDictionary`. On
-    # Render this points at the same volume-mounted directory the fleet DB
-    # uses (e.g. `/app/data/checkpoints.db`).
+    # LangGraph checkpointer DB. Conversation history survives restarts
+    # whenever this sits on persistent storage -- a free upgrade over the
+    # .NET `ConcurrentDictionary`. The free-tier Render demo points it at
+    # /tmp (no disk on that plan), so the hosted demo's history resets on
+    # cold start; local dev and volume-backed deploys keep it.
     checkpoint_db_path: str = "./checkpoints.db"
 
     # --- RAG (Phase 5) ----------------------------------------------------
@@ -89,9 +93,10 @@ class Settings(BaseSettings):
     # ported verbatim from the .NET `data/documents/` tree.
     documents_dir: str = "./data/documents"
 
-    # Where Chroma writes its SQLite + hnsw index. On Render this points
-    # inside the same volume as the fleet DB and checkpoint store, so the
-    # collection survives restarts and ingestion becomes a one-shot cost.
+    # Where Chroma writes its SQLite + hnsw index. On persistent storage
+    # the collection survives restarts and ingestion is a one-shot cost;
+    # the free-tier Render demo uses /tmp, so it re-embeds the (small)
+    # SOP corpus on each cold start.
     chroma_persist_dir: str = "./data/chroma"
     chroma_collection_name: str = "fleet-documents"
 

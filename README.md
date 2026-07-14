@@ -78,7 +78,10 @@ curl -sS -X POST "$API/api/chat" -H 'Content-Type: application/json' \
 The original is C# / Angular / Semantic Kernel. This one is Python / React / LangGraph. Both run on OpenAI for chat and embeddings — keeping the LLM constant means the diff between them is the parts that actually matter: domain modeling, agent orchestration, RAG, streaming UX, deployment. The Python edition is also a chance to fix three rough edges from the .NET version:
 
 1. **Conversation history survives restarts.** LangGraph's `AsyncSqliteSaver` checkpointer replaces the .NET `ConcurrentDictionary<string, ChatHistory>` that evaporates on process restart.
-2. **RAG ingestion is idempotent.** Chroma on a persistent volume means the SOP corpus is embedded once, not on every cold start.
+2. **RAG ingestion is idempotent.** Chroma on persistent storage means the SOP corpus is embedded once, not on every cold start.
+
+   > **Free-tier caveat:** both of the above hold whenever the SQLite and Chroma paths sit on persistent storage (local dev, a Docker volume). Render's free tier has no disk, so the hosted demo writes to `/tmp` — conversation history and embeddings reset on each cold start, and the SOP corpus is re-embedded at boot. The code is persistence-ready; the $0 hosting isn't.
+
 3. **SSE framing is newline-safe.** The .NET stream emits `data: {chunk}\n\n` raw, which breaks the client's line-split parser when a chunk contains `\n`. The Python edition escapes newlines on the wire.
 
 ## Architecture
@@ -180,10 +183,11 @@ Live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com) �
 - [x] Phase 4 — Custom StateGraph + SSE streaming
 - [x] Phase 5 — RAG pipeline
 - [x] Phase 6 — Render deploy finalization
-- [ ] Phase 7 — Tests + CI polish (coverage floor + SQLite aggregation regression test)
+- [x] Phase 7 — Tests + CI polish (coverage floor + SQLite aggregation regression test)
 - [x] Phase 8 — README polish
 - [x] Phase 9 v1 — React frontend (Dashboard / Vehicles / Chat)
-- [ ] Phase 9 v2 — Frontend depth (Vehicle detail + Work orders, MSW component tests)
+- [x] Phase 9 v2 — Frontend depth (Vehicle detail + Work orders routes)
+- [ ] Phase 9 v3 — Frontend component test suite (MSW)
 - [x] Phase 10 — ETL pipeline (vehicle inspections)
 
 ## Running locally
