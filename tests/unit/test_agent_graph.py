@@ -14,6 +14,7 @@ from fleetwise.ai.agent import (
     _should_continue,
     extract_functions_used,
     final_ai_text,
+    last_turn_messages,
 )
 from fleetwise.settings import Settings
 
@@ -121,3 +122,32 @@ def test_extract_functions_used_dedupes_preserving_order() -> None:
         ToolMessage(content="", name="get_fleet_summary", tool_call_id="3"),  # dup
     ]
     assert extract_functions_used(msgs) == ["get_fleet_summary", "search_vehicles"]
+
+
+# --- last_turn_messages slicing --------------------------------------------
+
+
+def test_last_turn_messages_slices_from_final_human_message() -> None:
+    turn_one = [
+        HumanMessage(content="How big is the fleet?"),
+        AIMessage(content="", tool_calls=[{"name": "get_fleet_summary", "args": {}, "id": "1"}]),
+        ToolMessage(content="35 vehicles", name="get_fleet_summary", tool_call_id="1"),
+        AIMessage(content="35 vehicles."),
+    ]
+    turn_two = [
+        HumanMessage(content="Thanks!"),
+        AIMessage(content="You're welcome."),
+    ]
+
+    sliced = last_turn_messages([*turn_one, *turn_two])
+
+    assert sliced == turn_two
+    # The whole point: tool usage from turn 1 must not leak into turn 2.
+    assert extract_functions_used(sliced) == []
+
+
+def test_last_turn_messages_returns_everything_when_no_human_message() -> None:
+    # Defensive fallback -- a thread always starts with a HumanMessage in
+    # practice, but slicing must not explode on a weird message log.
+    msgs = [AIMessage(content="orphan answer")]
+    assert last_turn_messages(msgs) == msgs

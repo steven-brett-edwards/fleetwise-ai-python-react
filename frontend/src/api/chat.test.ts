@@ -45,6 +45,37 @@ describe('streamChat', () => {
     ])
   })
 
+  it('decodes an escaped literal backslash-n as two characters, not a newline', async () => {
+    // Regression for the sequential-replace decode bug (same as the .NET
+    // edition's Angular client). A model emitting the two characters
+    // `\` + `n` (common in code blocks) is escaped on the wire as `\\n`;
+    // decoding `\n` before `\\` corrupted it into backslash + real newline.
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeStreamResponse([
+        'event: token\ndata: use \\\\n for newlines\n\n',
+        'event: done\ndata: [DONE]\n\n',
+      ]),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: StreamEvent[] = []
+    await streamChat({ message: 'hi', onEvent: (e) => events.push(e) })
+
+    expect(events[0]).toEqual({ type: 'token', text: 'use \\n for newlines' })
+  })
+
+  it('decodes escaped carriage returns', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeStreamResponse(['event: token\ndata: a\\r\\nb\n\n', 'event: done\ndata: [DONE]\n\n']),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: StreamEvent[] = []
+    await streamChat({ message: 'hi', onEvent: (e) => events.push(e) })
+
+    expect(events[0]).toEqual({ type: 'token', text: 'a\r\nb' })
+  })
+
   it('preserves leading spaces inside token frames (no word-glue)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       makeStreamResponse([

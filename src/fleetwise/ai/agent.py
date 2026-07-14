@@ -33,14 +33,20 @@ conversations still survive restarts.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
 
 import aiosqlite
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -215,6 +221,22 @@ def _rag_available(settings: Settings) -> bool:
         return True  # no key to probe; let first embed() fail loudly if unreachable
     # `auto`: prefer openai, else ollama.
     return bool(settings.openai_api_key) or True
+
+
+def last_turn_messages(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    """Slice the full checkpointed thread down to the current turn.
+
+    LangGraph's `ainvoke` returns the entire accumulated thread when a
+    checkpointer is attached, not just this run's additions -- so scanning
+    the whole thing for tool usage reports tools from every earlier turn
+    (the same cross-turn bug the .NET edition fixed in its PR #20). A turn
+    starts at the `HumanMessage` the endpoint just appended; everything
+    from the last `HumanMessage` onward belongs to the current turn.
+    """
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            return list(messages[i:])
+    return list(messages)
 
 
 def extract_functions_used(messages: Iterable[BaseMessage]) -> list[str]:
