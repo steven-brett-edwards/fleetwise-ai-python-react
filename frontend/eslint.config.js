@@ -18,5 +18,14 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Underscore prefix is the conventional "intentionally unused" marker
+      // (destructure-to-omit, placeholder args). Same convention ruff's
+      // dummy-variable-rgx applies on the backend.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
   },
 ])

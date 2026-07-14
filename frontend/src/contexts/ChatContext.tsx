@@ -105,6 +105,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
 
+// The provider + its accessor hook belong in one module; the cost is HMR
+// doing a full reload for this file instead of a fast refresh. Fine.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useChat(): ChatContextValue {
   const ctx = useContext(ChatContext)
   if (!ctx) {
