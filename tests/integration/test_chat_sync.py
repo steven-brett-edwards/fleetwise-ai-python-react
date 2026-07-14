@@ -58,3 +58,31 @@ async def test_chat_functions_used_reports_current_turn_only(
     second = await chat_client.post("/api/chat", json={"Message": "Thanks!", **thread})
     assert second.status_code == 200, second.text
     assert second.json()["FunctionsUsed"] == []
+
+
+async def test_chat_rejects_oversized_message(chat_client: AsyncClient) -> None:
+    # The DTO caps Message at 2000 chars so one request can't carry an
+    # outsized prompt to the paid LLM API. FastAPI rejects before the
+    # agent ever runs.
+    res = await chat_client.post("/api/chat", json={"Message": "x" * 2001})
+    assert res.status_code == 422
+
+
+async def test_chat_rejects_empty_message(chat_client: AsyncClient) -> None:
+    res = await chat_client.post("/api/chat", json={"Message": ""})
+    assert res.status_code == 422
+
+
+async def test_chat_requests_over_rate_limit_get_429(chat_client: AsyncClient) -> None:
+    """The middleware is wired into the real app (default: 15/min per IP).
+
+    The per-app counter starts fresh for this test's app instance, so
+    requests 1-15 pass and 16 trips the limit.
+    """
+    for i in range(15):
+        res = await chat_client.post("/api/chat", json={"Message": f"ping {i}"})
+        assert res.status_code == 200, f"request {i + 1}: {res.text}"
+
+    res = await chat_client.post("/api/chat", json={"Message": "one too many"})
+    assert res.status_code == 429
+    assert res.headers["retry-after"] == "60"

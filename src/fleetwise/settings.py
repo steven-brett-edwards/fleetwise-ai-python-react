@@ -58,6 +58,13 @@ class Settings(BaseSettings):
             return [item.strip() for item in raw.split(",") if item.strip()]
         return raw
 
+    # --- Chat guardrails ---------------------------------------------------
+    # Fixed-window per-client-IP rate limit on /api/chat*. The chat routes
+    # proxy to a paid LLM API from a public URL, so one abusive caller can
+    # otherwise burn the key's budget. 0 disables the middleware (useful
+    # for local load-poking; tests use their own app instances either way).
+    chat_rate_limit_per_minute: int = 15
+
     # --- AI / LangGraph configuration -------------------------------------
     # Flip between Anthropic (hosted demo default), OpenAI (fallback), and
     # Ollama (local-first, no API key). The factory in `ai.providers`

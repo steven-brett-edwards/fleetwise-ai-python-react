@@ -80,6 +80,34 @@ class AgentBundle:
     checkpointer: AsyncSqliteSaver
 
 
+# Bound on what each turn sends to the LLM. The checkpointer accumulates
+# the full thread forever (by design -- history survives restarts), so
+# without a window the per-turn token cost grows monotonically with thread
+# age. 40 messages mirrors the .NET edition's cap.
+MAX_TURN_MESSAGES = 40
+
+
+def window_messages(
+    messages: Sequence[BaseMessage], limit: int = MAX_TURN_MESSAGES
+) -> list[BaseMessage]:
+    """Keep the newest `limit` messages, never starting on a tool result.
+
+    A `ToolMessage` whose parent tool-calls `AIMessage` fell outside the
+    window is invalid input for every provider (OpenAI rejects the whole
+    request), so leading `ToolMessage`s are dropped until the window
+    starts on a clean boundary. The parent relationship only runs forward
+    (an `AIMessage` is immediately followed by its tool results), so
+    trimming from the front is sufficient.
+
+    Only the LLM input is windowed -- checkpointed state keeps the full
+    thread, so raising the limit later restores older context.
+    """
+    window = list(messages[-limit:])
+    while window and isinstance(window[0], ToolMessage):
+        window.pop(0)
+    return window
+
+
 def _should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
     """Conditional edge: loop to tools if the LLM requested any, else end.
 
@@ -119,13 +147,14 @@ def build_graph(
     )
 
     async def agent_node(state: MessagesState) -> dict[str, list[BaseMessage]]:
-        """LLM call. Prepend the system prompt if it's not already there.
+        """LLM call: window the history, then prepend the system prompt.
 
-        The system prompt is injected on the first turn only -- subsequent
-        turns replay history from the checkpointer, which already carries
-        the prior system message.
+        The system prompt never lands in checkpointed state -- this node
+        only appends the model's response -- so it is prepended to the
+        LLM input on every turn. That also means the window can't evict
+        it, no matter how long the thread gets.
         """
-        messages = state["messages"]
+        messages: list[BaseMessage] = window_messages(state["messages"])
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt), *messages]
         response = await bound.ainvoke(messages)
