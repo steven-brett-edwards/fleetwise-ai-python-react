@@ -66,3 +66,54 @@ describe('streamChat', () => {
     expect(combined).toBe('Public Works has')
   })
 })
+
+describe('streamChat error handling', () => {
+  it('throws on a non-OK response instead of parsing it as a stream', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('rate limited', { status: 429 })),
+    )
+
+    await expect(streamChat({ message: 'hi', onEvent: () => {} })).rejects.toThrow(
+      'Chat stream failed: 429',
+    )
+  })
+
+  it('throws when the response has no body', async () => {
+    const bodyless = { ok: true, status: 200, body: null, headers: new Headers() }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bodyless))
+
+    await expect(streamChat({ message: 'hi', onEvent: () => {} })).rejects.toThrow(
+      'Chat stream failed: 200',
+    )
+  })
+
+  it('ignores frames with unknown event names', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeStreamResponse([
+        'event: heartbeat\ndata: ignored\n\n',
+        'event: token\ndata: hi\n\n',
+        'event: done\ndata: [DONE]\n\n',
+      ]),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: StreamEvent[] = []
+    await streamChat({ message: 'hi', onEvent: (e) => events.push(e) })
+
+    expect(events).toEqual([{ type: 'token', text: 'hi' }, { type: 'done' }])
+  })
+
+  it('still resolves the conversation id when the stream ends without a done frame', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(makeStreamResponse(['event: token\ndata: partial\n\n']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: StreamEvent[] = []
+    const conversationId = await streamChat({ message: 'hi', onEvent: (e) => events.push(e) })
+
+    expect(conversationId).toBe('conv-xyz')
+    expect(events).toEqual([{ type: 'token', text: 'partial' }])
+  })
+})

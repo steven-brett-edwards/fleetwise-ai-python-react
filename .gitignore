@@ -50,3 +50,6 @@ env/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Vitest coverage output
+frontend/coverage/
