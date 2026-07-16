@@ -24,7 +24,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from fleetwise.ai.agent import extract_functions_used, final_ai_text
+from fleetwise.ai.agent import extract_functions_used, final_ai_text, last_turn_messages
 from fleetwise.ai.sse import to_sse_frames
 from fleetwise.api.deps import AgentDep
 from fleetwise.domain.dto import ChatRequest, ChatResponse
@@ -47,12 +47,15 @@ async def chat(payload: ChatRequest, agent: AgentDep) -> ChatResponse:
         {"messages": [HumanMessage(content=payload.message)]},
         config=config,
     )
-    messages = result.get("messages", [])
+    # The checkpointer makes `result["messages"]` the WHOLE thread, prior
+    # turns included; slice to this turn so `FunctionsUsed` doesn't
+    # re-report every tool the conversation has ever called.
+    turn_messages = last_turn_messages(result.get("messages", []))
 
     return ChatResponse(
-        response=final_ai_text(messages),
+        response=final_ai_text(turn_messages),
         conversation_id=conversation_id,
-        functions_used=extract_functions_used(messages),
+        functions_used=extract_functions_used(turn_messages),
     )
 
 

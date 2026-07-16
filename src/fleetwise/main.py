@@ -29,6 +29,7 @@ from fleetwise.api import (
     vehicles as vehicles_api,
     work_orders as work_orders_api,
 )
+from fleetwise.api.rate_limit import ChatRateLimitMiddleware
 from fleetwise.data.db import get_session_factory, init_db
 from fleetwise.data.seed import seed_if_empty
 from fleetwise.etl.bootstrap import ingest_inspections_if_empty
@@ -73,6 +74,13 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Guardrail: bound how fast one client can hit the paid-LLM chat routes.
+    if settings.chat_rate_limit_per_minute > 0:
+        app.add_middleware(
+            ChatRateLimitMiddleware,
+            limit_per_minute=settings.chat_rate_limit_per_minute,
+        )
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]

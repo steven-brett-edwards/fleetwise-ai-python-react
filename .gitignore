@@ -53,3 +53,11 @@ frontend/.vite/
 
 # Vitest coverage output
 frontend/coverage/
+
+# k8s/Terraform local secrets and state -- real API keys and provider
+# binaries live here; committed only as templates on the infra branch.
+k8s/secret.yaml
+terraform/terraform.tfvars
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform/

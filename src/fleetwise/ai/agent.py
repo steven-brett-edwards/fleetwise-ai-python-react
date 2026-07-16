@@ -33,14 +33,20 @@ conversations still survive restarts.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
 
 import aiosqlite
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -72,6 +78,34 @@ class AgentBundle:
     # parameter churns between LangGraph versions.
     graph: CompiledStateGraph  # type: ignore[type-arg]
     checkpointer: AsyncSqliteSaver
+
+
+# Bound on what each turn sends to the LLM. The checkpointer accumulates
+# the full thread forever (by design -- history survives restarts), so
+# without a window the per-turn token cost grows monotonically with thread
+# age. 40 messages mirrors the .NET edition's cap.
+MAX_TURN_MESSAGES = 40
+
+
+def window_messages(
+    messages: Sequence[BaseMessage], limit: int = MAX_TURN_MESSAGES
+) -> list[BaseMessage]:
+    """Keep the newest `limit` messages, never starting on a tool result.
+
+    A `ToolMessage` whose parent tool-calls `AIMessage` fell outside the
+    window is invalid input for every provider (OpenAI rejects the whole
+    request), so leading `ToolMessage`s are dropped until the window
+    starts on a clean boundary. The parent relationship only runs forward
+    (an `AIMessage` is immediately followed by its tool results), so
+    trimming from the front is sufficient.
+
+    Only the LLM input is windowed -- checkpointed state keeps the full
+    thread, so raising the limit later restores older context.
+    """
+    window = list(messages[-limit:])
+    while window and isinstance(window[0], ToolMessage):
+        window.pop(0)
+    return window
 
 
 def _should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
@@ -113,13 +147,14 @@ def build_graph(
     )
 
     async def agent_node(state: MessagesState) -> dict[str, list[BaseMessage]]:
-        """LLM call. Prepend the system prompt if it's not already there.
+        """LLM call: window the history, then prepend the system prompt.
 
-        The system prompt is injected on the first turn only -- subsequent
-        turns replay history from the checkpointer, which already carries
-        the prior system message.
+        The system prompt never lands in checkpointed state -- this node
+        only appends the model's response -- so it is prepended to the
+        LLM input on every turn. That also means the window can't evict
+        it, no matter how long the thread gets.
         """
-        messages = state["messages"]
+        messages: list[BaseMessage] = window_messages(state["messages"])
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt), *messages]
         response = await bound.ainvoke(messages)
@@ -215,6 +250,22 @@ def _rag_available(settings: Settings) -> bool:
         return True  # no key to probe; let first embed() fail loudly if unreachable
     # `auto`: prefer openai, else ollama.
     return bool(settings.openai_api_key) or True
+
+
+def last_turn_messages(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    """Slice the full checkpointed thread down to the current turn.
+
+    LangGraph's `ainvoke` returns the entire accumulated thread when a
+    checkpointer is attached, not just this run's additions -- so scanning
+    the whole thing for tool usage reports tools from every earlier turn
+    (the same cross-turn bug the .NET edition fixed in its PR #20). A turn
+    starts at the `HumanMessage` the endpoint just appended; everything
+    from the last `HumanMessage` onward belongs to the current turn.
+    """
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            return list(messages[i:])
+    return list(messages)
 
 
 def extract_functions_used(messages: Iterable[BaseMessage]) -> list[str]:
