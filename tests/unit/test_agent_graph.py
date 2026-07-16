@@ -7,14 +7,20 @@ edge that decides whether to call tools again or end the turn.
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+import aiosqlite
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableLambda
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from fleetwise.ai.agent import (
+    MAX_TURN_MESSAGES,
     _rag_available,
     _should_continue,
+    build_graph,
     extract_functions_used,
     final_ai_text,
     last_turn_messages,
+    window_messages,
 )
 from fleetwise.settings import Settings
 
@@ -151,3 +157,72 @@ def test_last_turn_messages_returns_everything_when_no_human_message() -> None:
     # practice, but slicing must not explode on a weird message log.
     msgs = [AIMessage(content="orphan answer")]
     assert last_turn_messages(msgs) == msgs
+
+
+# --- window_messages --------------------------------------------------------
+
+
+def test_window_messages_passes_short_histories_through() -> None:
+    msgs = [HumanMessage(content="hi"), AIMessage(content="hello")]
+    assert window_messages(msgs) == msgs
+
+
+def test_window_messages_keeps_only_the_newest_limit_messages() -> None:
+    msgs = [HumanMessage(content=f"m{i}") for i in range(50)]
+    windowed = window_messages(msgs, limit=40)
+    assert len(windowed) == 40
+    assert windowed[0].content == "m10"
+    assert windowed[-1].content == "m49"
+
+
+def test_window_messages_drops_orphaned_leading_tool_results() -> None:
+    # If the cut lands between a tool-calls AIMessage and its results,
+    # the leading ToolMessages must go -- providers reject a tool result
+    # whose parent call is missing.
+    msgs: list[BaseMessage] = [
+        HumanMessage(content="old question"),
+        AIMessage(content="", tool_calls=[{"name": "get_fleet_summary", "args": {}, "id": "1"}]),
+        ToolMessage(content="35", name="get_fleet_summary", tool_call_id="1"),
+        ToolMessage(content="12", name="search_vehicles", tool_call_id="2"),
+        AIMessage(content="Answer."),
+        HumanMessage(content="new question"),
+    ]
+    # limit=4 cuts inside the tool block: [Tool, Tool, AI, Human] -> [AI, Human]
+    windowed = window_messages(msgs, limit=4)
+    assert [type(m).__name__ for m in windowed] == ["AIMessage", "HumanMessage"]
+
+
+def test_window_messages_survives_all_tool_history() -> None:
+    msgs: list[BaseMessage] = [
+        ToolMessage(content="35", name="get_fleet_summary", tool_call_id="1"),
+    ]
+    assert window_messages(msgs, limit=1) == []
+
+
+async def test_agent_node_windows_history_and_prepends_system_prompt() -> None:
+    # Graph-level check: a long thread reaches the LLM as (system prompt +
+    # the newest MAX_TURN_MESSAGES), not the whole history.
+    captured: list[list[BaseMessage]] = []
+
+    def fake_llm(msgs: object) -> AIMessage:
+        assert isinstance(msgs, list)
+        captured.append(list(msgs))
+        return AIMessage(content="ok")
+
+    async with aiosqlite.connect(":memory:") as conn:
+        graph = build_graph(
+            RunnableLambda(fake_llm),
+            checkpointer=AsyncSqliteSaver(conn),
+            tools=[],
+        )
+        long_thread = [HumanMessage(content=f"m{i}") for i in range(60)]
+        await graph.ainvoke(
+            {"messages": long_thread},
+            config={"configurable": {"thread_id": "window-test"}},
+        )
+
+    (llm_input,) = captured
+    assert len(llm_input) == MAX_TURN_MESSAGES + 1  # window + system prompt
+    assert isinstance(llm_input[0], SystemMessage)
+    assert llm_input[1].content == "m20"
+    assert llm_input[-1].content == "m59"

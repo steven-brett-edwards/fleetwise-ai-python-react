@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from pydantic.alias_generators import to_pascal
 
 from fleetwise.domain.enums import (
@@ -123,7 +123,10 @@ class ChatRequest(_WireModel):
     the same checkpointer history.
     """
 
-    message: str
+    # Bounded so a single request can't carry an outsized prompt to the
+    # paid LLM API; FastAPI turns a violation into a 422 before the agent
+    # ever runs. 2000 chars mirrors the .NET edition's cap.
+    message: str = Field(min_length=1, max_length=2000)
     conversation_id: str | None = None
 
 
