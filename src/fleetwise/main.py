@@ -13,7 +13,7 @@ added sync chat, Phase 4 added streaming chat.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,7 +37,7 @@ from fleetwise.settings import get_settings
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Create tables + seed demo data, build the LangGraph agent, hand control back.
 
     The agent bundle is held on `app.state.agent` for the lifetime of the
@@ -73,6 +73,12 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # The stream endpoint returns the minted conversation id in a
+        # response header (the body is a live token stream). Same-origin
+        # callers see it regardless, but a cross-origin client -- the
+        # README's "Angular can point here via env-var swap" path -- only
+        # gets it if CORS explicitly exposes it.
+        expose_headers=["X-Conversation-Id"],
     )
 
     # Guardrail: bound how fast one client can hit the paid-LLM chat routes.
