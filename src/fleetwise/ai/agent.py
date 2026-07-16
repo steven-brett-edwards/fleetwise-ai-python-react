@@ -33,7 +33,8 @@ conversations still survive restarts.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable, Sequence
+import logging
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
@@ -62,6 +63,8 @@ from fleetwise.ai.rag.vector_store import build_vector_store
 from fleetwise.ai.tools import LIVE_DATA_TOOLS, document_search_tools
 from fleetwise.ai.tools._retrieval import set_vector_store
 from fleetwise.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -108,7 +111,7 @@ def window_messages(
     return window
 
 
-def _should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
+def should_continue(state: MessagesState) -> Literal["tools", "__end__"]:
     """Conditional edge: loop to tools if the LLM requested any, else end.
 
     LangGraph names the terminal sentinel `__end__`; `END` re-exports
@@ -168,7 +171,7 @@ def build_graph(
     graph.add_edge(START, "agent")
     graph.add_conditional_edges(
         "agent",
-        _should_continue,
+        should_continue,
         {"tools": "tools", "__end__": END},
     )
     graph.add_edge("tools", "agent")
@@ -181,20 +184,25 @@ async def agent_lifespan(
     *,
     model: BaseChatModel | Runnable[object, BaseMessage] | None = None,
     rag_enabled: bool | None = None,
-) -> AsyncIterator[AgentBundle]:
+) -> AsyncGenerator[AgentBundle, None]:
     """Own the checkpointer + graph + (optional) vector store for an app's lifetime.
 
     `model` is an override hook for tests -- pass a scripted fake to
     skip the live provider. `rag_enabled` forces RAG on/off for tests
     that want to pin the behavior regardless of environment; production
-    callers leave it `None` and let `build_embeddings` probe the config.
+    callers leave it `None` and let `build_embeddings` decide (it is the
+    single decision point: None means cleanly disabled, and an explicit
+    provider with missing config raises -- loud misconfiguration beats a
+    silent downgrade).
 
     When RAG is active we (a) build the Chroma store and register it in
     the tool-module retrieval registry so `search_fleet_documentation`
     can find it, (b) run one-shot ingestion if the collection is empty,
     (c) bind the RAG tool + append `DOCUMENTATION_STANZA` to the prompt.
     When RAG is inactive, none of those happen -- the LLM sees exactly
-    the same tool surface it did in Phase 3.
+    the same tool surface it did in Phase 3. A *runtime* setup failure
+    (e.g. `auto` falling back to an Ollama that isn't running) degrades
+    to the RAG-less agent with a warning instead of failing the boot.
     """
     chat_model: BaseChatModel | Runnable[object, BaseMessage]
     chat_model = model if model is not None else build_chat_model(settings)
@@ -208,17 +216,21 @@ async def agent_lifespan(
         tools: list[BaseTool] = list(LIVE_DATA_TOOLS)
         system_prompt = BASE_SYSTEM_PROMPT
 
-        # Decide whether RAG is on. If the caller forced it we honor that
-        # even when embeddings come back None; production paths go through
-        # the auto-probe and cleanly degrade when no embedding backend is
-        # reachable.
-        should_enable_rag = rag_enabled if rag_enabled is not None else _rag_available(settings)
+        # `build_embeddings` is the single RAG decision point (the old
+        # `_rag_available` pre-probe duplicated its logic and its `auto`
+        # branch had decayed into a constant True). None => disabled.
+        embeddings = build_embeddings(settings) if rag_enabled is not False else None
 
-        if should_enable_rag:
-            embeddings = build_embeddings(settings)
-            if embeddings is not None:
+        if embeddings is not None:
+            try:
                 vector_store = build_vector_store(embeddings, settings)
                 await ingest_if_empty(vector_store, settings.documents_dir)
+            except Exception:
+                # Degrade, don't die: an unreachable embedding backend at
+                # boot (auto-mode Ollama fallback with no server running)
+                # should cost us the DocumentSearch tool, not the whole app.
+                logger.warning("RAG setup failed; starting without document search", exc_info=True)
+            else:
                 set_vector_store(vector_store)
                 # Tear the registry down on shutdown so tests starting a
                 # fresh app don't inherit a stale store from a previous run.
@@ -233,23 +245,6 @@ async def agent_lifespan(
             system_prompt=system_prompt,
         )
         yield AgentBundle(graph=graph, checkpointer=checkpointer)
-
-
-def _rag_available(settings: Settings) -> bool:
-    """Cheap probe: would `build_embeddings` return a usable provider?
-
-    We don't actually call the factory here because that would instantiate
-    a live client; just check the same preconditions the factory checks.
-    """
-    provider = settings.embedding_provider
-    if provider == "disabled":
-        return False
-    if provider == "openai":
-        return bool(settings.openai_api_key)
-    if provider == "ollama":
-        return True  # no key to probe; let first embed() fail loudly if unreachable
-    # `auto`: prefer openai, else ollama.
-    return bool(settings.openai_api_key) or True
 
 
 def last_turn_messages(messages: Sequence[BaseMessage]) -> list[BaseMessage]:

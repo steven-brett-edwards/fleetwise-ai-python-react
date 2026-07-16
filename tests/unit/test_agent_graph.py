@@ -1,27 +1,30 @@
 """Unit tests for the hand-rolled StateGraph's conditional router.
 
 The full agent loop is covered by the chat integration tests; here we
-pin the one piece of custom logic in `agent.py` -- the `_should_continue`
+pin the one piece of custom logic in `agent.py` -- the `should_continue`
 edge that decides whether to call tools again or end the turn.
 """
 
 from __future__ import annotations
 
 import aiosqlite
+import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from fleetwise.ai import agent as agent_module
 from fleetwise.ai.agent import (
     MAX_TURN_MESSAGES,
-    _rag_available,
-    _should_continue,
+    agent_lifespan,
     build_graph,
     extract_functions_used,
     final_ai_text,
     last_turn_messages,
+    should_continue,
     window_messages,
 )
+from fleetwise.ai.tools._retrieval import get_vector_store
 from fleetwise.settings import Settings
 
 
@@ -42,7 +45,7 @@ def test_should_continue_routes_to_tools_when_ai_message_has_tool_calls() -> Non
             ),
         ]
     }
-    assert _should_continue(state) == "tools"  # type: ignore[arg-type]
+    assert should_continue(state) == "tools"  # type: ignore[arg-type]
 
 
 def test_should_continue_ends_when_last_ai_message_has_no_tool_calls() -> None:
@@ -54,17 +57,23 @@ def test_should_continue_ends_when_last_ai_message_has_no_tool_calls() -> None:
     }
     # `__end__` is the LangGraph terminal-node sentinel; `END` re-exports
     # that string but the edge signature is the literal.
-    assert _should_continue(state) == "__end__"  # type: ignore[arg-type]
+    assert should_continue(state) == "__end__"  # type: ignore[arg-type]
 
 
 def test_should_continue_ends_when_last_message_is_not_ai_message() -> None:
     # Defensive: if something odd is on the tail (e.g. a tool error
     # shaped as a HumanMessage in a test), don't loop -- terminate.
     state = {"messages": [HumanMessage(content="hi")]}
-    assert _should_continue(state) == "__end__"  # type: ignore[arg-type]
+    assert should_continue(state) == "__end__"  # type: ignore[arg-type]
 
 
-# --- _rag_available probe -------------------------------------------------
+# --- agent_lifespan RAG decision + degrade paths ---------------------------
+#
+# `build_embeddings` is the single decision point (the old `_rag_available`
+# pre-probe duplicated its logic and its `auto` branch had decayed into a
+# constant True). These pin the lifespan-level contract: disabled configs
+# boot without RAG, explicit misconfiguration is loud, and runtime setup
+# failures degrade to a RAG-less agent instead of failing the boot.
 
 
 def _s(**overrides: object) -> Settings:
@@ -72,28 +81,60 @@ def _s(**overrides: object) -> Settings:
     base = Settings.model_construct(
         embedding_provider="auto",
         openai_api_key=None,
+        checkpoint_db_path=":memory:",
     )
     return base.model_copy(update=overrides)
 
 
-def test_rag_available_false_when_disabled() -> None:
-    assert _rag_available(_s(embedding_provider="disabled")) is False
+def _fake_chat_model() -> RunnableLambda[object, AIMessage]:
+    return RunnableLambda(lambda _msgs: AIMessage(content="ok"))
 
 
-def test_rag_available_true_for_explicit_ollama() -> None:
-    # Ollama is local and keyless; we optimistically say "yes" and let
-    # the first embed call fail loudly if the server isn't running.
-    assert _rag_available(_s(embedding_provider="ollama")) is True
+async def test_agent_lifespan_boots_without_rag_when_provider_disabled() -> None:
+    async with agent_lifespan(_s(embedding_provider="disabled"), model=_fake_chat_model()) as b:
+        assert b.graph is not None
+        assert get_vector_store() is None
 
 
-def test_rag_available_requires_key_for_explicit_openai() -> None:
-    assert _rag_available(_s(embedding_provider="openai")) is False
-    assert _rag_available(_s(embedding_provider="openai", openai_api_key="sk-x")) is True
+async def test_agent_lifespan_fails_loudly_for_explicit_openai_without_key() -> None:
+    # Explicit provider + missing config is operator error; a silent
+    # RAG-less boot would hide it (the old probe did exactly that).
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY is unset"):
+        async with agent_lifespan(_s(embedding_provider="openai"), model=_fake_chat_model()):
+            pass  # pragma: no cover - lifespan raises before yielding
 
 
-def test_rag_available_auto_is_true_via_ollama_fallback() -> None:
-    # No OpenAI key -> falls back to Ollama, which is assumed present.
-    assert _rag_available(_s(embedding_provider="auto")) is True
+async def test_agent_lifespan_degrades_when_rag_setup_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Simulate `auto` falling back to an Ollama that isn't running: the
+    # embedding factory succeeds, the store/ingest step blows up.
+    monkeypatch.setattr(agent_module, "build_embeddings", lambda _s: object())
+
+    def _boom(_embeddings: object, _settings: Settings) -> object:
+        raise ConnectionError("connection refused: localhost:11434")
+
+    monkeypatch.setattr(agent_module, "build_vector_store", _boom)
+
+    with caplog.at_level("WARNING", logger="fleetwise.ai.agent"):
+        async with agent_lifespan(_s(), model=_fake_chat_model(), rag_enabled=True) as b:
+            assert b.graph is not None
+            assert get_vector_store() is None
+
+    assert "RAG setup failed" in caplog.text
+
+
+async def test_agent_lifespan_rag_disabled_flag_never_touches_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _explode(_settings: Settings) -> object:
+        raise AssertionError("build_embeddings must not be called with rag_enabled=False")
+
+    monkeypatch.setattr(agent_module, "build_embeddings", _explode)
+
+    async with agent_lifespan(_s(), model=_fake_chat_model(), rag_enabled=False) as b:
+        assert b.graph is not None
+        assert get_vector_store() is None
 
 
 # --- final_ai_text / extract_functions_used ------------------------------
