@@ -187,7 +187,7 @@ Live at [fleetwise-py-api.onrender.com](https://fleetwise-py-api.onrender.com) �
 - [x] Phase 8 — README polish
 - [x] Phase 9 v1 — React frontend (Dashboard / Vehicles / Chat)
 - [x] Phase 9 v2 — Frontend depth (Vehicle detail + Work orders routes)
-- [ ] Phase 9 v3 — Frontend component test suite (MSW)
+- [x] Phase 9 v3 — Frontend component test suite (MSW)
 - [x] Phase 10 — ETL pipeline (vehicle inspections)
 
 ## Running locally
